@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -460,7 +459,7 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
                     environment["pluginDir"]?.Value<string>() != _request.PluginDir ||
                     environment["buildConfig"]?.Value<string>() != (_request.BuildConfig ?? "Release") ||
                     !(IsHex(environment["gitCommit"]?.Value<string>(), 40) || IsHex(environment["gitCommit"]?.Value<string>(), 64)) ||
-                    !ValidTimestamp(environment, "gitCommitDate") || !ValidTimestamp(environment, "buildDate"))
+                    !ValidTimestamp(parsed.RootElement, "gitCommitDate") || !ValidTimestamp(parsed.RootElement, "buildDate"))
                     throw ProtocolError();
             }
             catch (Exception error) when (error is JsonException or Newtonsoft.Json.JsonException or InvalidCastException or FormatException)
@@ -511,9 +510,10 @@ public sealed class RemoteBuildSandbox : IBuildSandbox, IDisposable
             return new StagedBuildOutput(environment, result.ManifestJson, result.AssemblyName, staging);
         }
 
-        private static bool ValidTimestamp(JObject environment, string name) =>
-            DateTimeOffset.TryParse(environment[name]?.ToString(), CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal, out _);
+        private static bool ValidTimestamp(JsonElement environment, string name) =>
+            environment.TryGetProperty(name, out var value) &&
+            value.ValueKind == JsonValueKind.String &&
+            value.TryGetDateTimeOffset(out _);
 
         private static void EnsurePrivateDirectory(string path)
         {
