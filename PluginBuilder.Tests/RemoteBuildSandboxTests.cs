@@ -866,7 +866,7 @@ public class RemoteBuildSandboxTests
 
     private sealed class Fixture : IDisposable
     {
-        public string Directory { get; } = Path.Combine(Path.GetTempPath(), "pb-broker-client-tests-" + Guid.NewGuid().ToString("N"));
+        public string Directory { get; } = Path.Combine(TestPaths.GetPhysicalDirectoryPath(Path.GetTempPath()), "pb-broker-client-tests-" + Guid.NewGuid().ToString("N"));
         public Transport Transport { get; } = new();
         public BuildExecutorState State { get; } = new();
         public RemoteBuildSandbox Client { get; }
