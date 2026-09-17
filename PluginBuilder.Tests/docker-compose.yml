@@ -13,7 +13,6 @@ services:
 
   azureblob:
     image: mcr.microsoft.com/azure-blob-storage
-    platform: linux/amd64
     environment:
       LOCAL_STORAGE_ACCOUNT_NAME: satoshi
       LOCAL_STORAGE_ACCOUNT_KEY: Rxb41pUHRe+ibX5XS311tjXpjvu7mVi2xYJvtmq1j2jlUpN+fY/gkzyBMjqwzgj42geXGdYSbPEcu5i5wjSjPw==
