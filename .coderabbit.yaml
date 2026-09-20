@@ -25,7 +25,20 @@ reviews:
   auto_assign_reviewers: false
   poem: false
   labeling_instructions: []
-  path_filters: []
+  # Temporary scope reduction for the large isolation PR. These are small,
+  # mechanical compatibility-test updates; review them separately before merge.
+  path_filters:
+    - "!PluginBuilder.Tests/AdminTests/AdminBTCPayCompatibilityUITests.cs"
+    - "!PluginBuilder.Tests/AdminTests/AdminPluginDeleteUITests.cs"
+    - "!PluginBuilder.Tests/AdminTests/AdminTokenSettingsUITests.cs"
+    - "!PluginBuilder.Tests/ApiTests/VersionLifecycleApiTests.cs"
+    - "!PluginBuilder.Tests/BTCPayCompatibilityTests.cs"
+    - "!PluginBuilder.Tests/BuildWhitelistEmailTests.cs"
+    - "!PluginBuilder.Tests/PluginTests/AccountUITests.cs"
+    - "!PluginBuilder.Tests/PluginTests/ImagesUITests.cs"
+    - "!PluginBuilder.Tests/PluginTests/VideoUITests.cs"
+    - "!PluginBuilder.Tests/PluginTests/ReleaseNotesUITests.cs"
+    - "!PluginBuilder.Tests/PluginTests/UserCleanupTests.cs"
   path_instructions: []
   abort_on_close: true
   auto_review:
