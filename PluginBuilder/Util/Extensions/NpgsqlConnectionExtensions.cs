@@ -463,6 +463,10 @@ public static class NpgsqlConnectionExtensions
 
     public static Task<int> SettingsSetAsync(this NpgsqlConnection connection, string key, string value)
     {
+        // The scan trigger reads this setting in SQL, so persist the same boolean the admin API reports.
+        if (key == SettingsKeys.AutomaticListingScansEnabled)
+            value = bool.TryParse(value, out var enabled) && enabled ? "true" : "false";
+
         var query = """
                     INSERT INTO settings(key, value)
                     VALUES(@key, @value)
@@ -802,11 +806,11 @@ public static class NpgsqlConnectionExtensions
     #region Methods relating to plugin listing requests
 
     public static async Task<int> CreateListingRequest(this NpgsqlConnection connection, PluginSlug pluginSlug, string releaseNote, string telegramMessage,
-        string userReviews, DateTimeOffset? announcementDate, string? submittedBy = null)
+        string userReviews, DateTimeOffset? announcementDate, string? submittedBy = null, PluginScanTarget? reviewTarget = null)
     {
         const string sql = """
-                           INSERT INTO plugin_listing_requests (plugin_slug, release_note, telegram_verification_message, user_reviews, announcement_date, status, submitted_at, submitted_by)
-                           VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP, @submittedBy)
+                           INSERT INTO plugin_listing_requests (plugin_slug, release_note, telegram_verification_message, user_reviews, announcement_date, status, submitted_at, submitted_by, review_target)
+                           VALUES (@pluginSlug, @releaseNote, @telegramMessage, @userReviews, @announcementDate, 'pending', CURRENT_TIMESTAMP, @submittedBy, @reviewTarget::jsonb)
                            RETURNING id
                            """;
 
@@ -817,7 +821,8 @@ public static class NpgsqlConnectionExtensions
             telegramMessage,
             userReviews,
             announcementDate,
-            submittedBy
+            submittedBy,
+            reviewTarget = reviewTarget?.ToJson()
         });
     }
 
@@ -835,7 +840,8 @@ public static class NpgsqlConnectionExtensions
                                   last_reminder_at AS "LastReminderAt",
                                   reviewed_at AS "ReviewedAt",
                                   reviewed_by AS "ReviewedBy",
-                                  rejection_reason AS "RejectionReason"
+                                  rejection_reason AS "RejectionReason",
+                                  review_note AS "ReviewNote", review_target::text AS "ReviewTargetJson"
                            FROM plugin_listing_requests
                            WHERE id = @requestId
                            """;
@@ -857,7 +863,8 @@ public static class NpgsqlConnectionExtensions
                                   last_reminder_at AS "LastReminderAt",
                                   reviewed_at AS "ReviewedAt",
                                   reviewed_by AS "ReviewedBy",
-                                  rejection_reason AS "RejectionReason"
+                                  rejection_reason AS "RejectionReason",
+                                  review_note AS "ReviewNote", review_target::text AS "ReviewTargetJson"
                            FROM plugin_listing_requests
                            WHERE plugin_slug = @pluginSlug AND status = 'pending'
                            ORDER BY submitted_at DESC
@@ -915,7 +922,8 @@ public static class NpgsqlConnectionExtensions
                               last_reminder_at AS "LastReminderAt",
                               reviewed_at AS "ReviewedAt",
                               reviewed_by AS "ReviewedBy",
-                              rejection_reason AS "RejectionReason"
+                              rejection_reason AS "RejectionReason",
+                                  review_note AS "ReviewNote", review_target::text AS "ReviewTargetJson"
                        FROM plugin_listing_requests
                        WHERE plugin_slug = @pluginSlug
                        ORDER BY submitted_at DESC

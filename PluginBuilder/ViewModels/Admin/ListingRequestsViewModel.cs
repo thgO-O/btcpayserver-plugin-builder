@@ -37,6 +37,9 @@ public class ListingRequestDetailViewModel
     public DateTimeOffset? ReviewedAt { get; set; }
     public string? ReviewedByEmail { get; set; }
     public string? RejectionReason { get; set; }
+    public string? ReviewNote { get; set; }
+    public PluginBuilder.Services.PluginScanTarget? ReviewTarget { get; set; }
+    public bool CanRequestScan { get; set; }
     public List<OwnerVerificationViewModel> Owners { get; set; } = new();
     public string PrimaryOwnerEmail { get; set; } = null!;
 }

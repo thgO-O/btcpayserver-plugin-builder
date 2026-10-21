@@ -40,7 +40,8 @@ public class AdminController(
     PluginOwnershipService ownershipService,
     ServerEnvironment serverEnvironment,
     ILogger<AdminController> logger,
-    ListingReviewService listingReviewService)
+    ListingReviewService listingReviewService,
+    PluginScanService pluginScans)
     : Controller
 {
     // settings editor
@@ -708,6 +709,7 @@ public class AdminController(
 
     private async Task PopulatePluginEditActiveTabData(NpgsqlConnection conn, PluginEditViewModel model)
     {
+        model.CanRequestScan = await PluginScanService.GetLatestTarget(conn, model.PluginSlug) is not null;
         switch (model.ActiveTab)
         {
             case PluginEditTabs.Owners:
@@ -1262,6 +1264,35 @@ public class AdminController(
 
     #region Listing Requests Management
 
+    [HttpPost("plugins/{pluginSlug}/scan")]
+    public async Task<IActionResult> RequestPluginScan(string pluginSlug, string? tab, CancellationToken cancellationToken)
+    {
+        var result = await pluginScans.Request(pluginSlug, null, userManager.GetUserId(User)!, null, cancellationToken);
+        if (result.Outcome == PluginScanService.Outcome.NotFound) return NotFound();
+        SetScanMessage(result);
+        return RedirectToAction(nameof(PluginEdit), new { pluginSlug, tab = PluginEditTabs.Normalize(tab) });
+    }
+
+    [HttpPost("listing-requests/{requestId:int}/scan")]
+    public async Task<IActionResult> RequestListingScan(int requestId, CancellationToken cancellationToken)
+    {
+        var result = await pluginScans.Request(null, requestId, userManager.GetUserId(User)!, null, cancellationToken);
+        if (result.Outcome == PluginScanService.Outcome.NotFound) return NotFound();
+        SetScanMessage(result);
+        return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+    }
+
+    private void SetScanMessage(PluginScanService.Result result)
+    {
+        var success = result.Outcome == PluginScanService.Outcome.Requested;
+        TempData[success ? TempDataConstant.SuccessMessage : TempDataConstant.WarningMessage] = result.Outcome switch
+        {
+            PluginScanService.Outcome.Requested => "Scan requested. An external coordinator will process the request.",
+            PluginScanService.Outcome.AlreadyProcessed => "This listing request has already been processed.",
+            _ => PluginScanService.MissingTargetMessage
+        };
+    }
+
     [HttpGet("listing-requests")]
     public async Task<IActionResult> ListingRequests(string? status = null)
     {
@@ -1345,6 +1376,9 @@ public class AdminController(
             ReviewedAt = request.ReviewedAt,
             ReviewedByEmail = reviewedByEmail,
             RejectionReason = request.RejectionReason,
+            ReviewNote = request.ReviewNote,
+            ReviewTarget = request.ReviewTarget,
+            CanRequestScan = (request.ReviewTarget ?? await PluginScanService.GetLatestTarget(conn, request.PluginSlug))?.IsValid() == true,
             Owners = ownerVerifications,
             PrimaryOwnerEmail = owners.FirstOrDefault(o => o.IsPrimary)?.Email ?? "Unknown"
         };
@@ -1353,9 +1387,14 @@ public class AdminController(
 
     [HttpPost("listing-requests/{requestId}/approve")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ApproveListingRequest(int requestId)
+    public async Task<IActionResult> ApproveListingRequest(int requestId, string reviewNote)
     {
-        var outcome = await listingReviewService.Review(requestId, userManager.GetUserId(User)!, true, null,
+        if (string.IsNullOrWhiteSpace(reviewNote) || reviewNote.Length > 10000)
+        {
+            TempData[TempDataConstant.WarningMessage] = "Review note is required and must not exceed 10000 characters";
+            return RedirectToAction(nameof(ListingRequestDetail), new { requestId });
+        }
+        var outcome = await listingReviewService.Review(requestId, userManager.GetUserId(User)!, true, reviewNote,
             slug => Url.Action(nameof(HomeController.GetPluginDetails), "Home", new { pluginSlug = slug }, Request.Scheme));
         if (outcome == ListingReviewService.Outcome.NotFound)
             return NotFound();

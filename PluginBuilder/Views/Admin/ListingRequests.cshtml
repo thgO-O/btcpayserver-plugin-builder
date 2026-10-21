@@ -16,7 +16,7 @@
            asp-route-status="pending"
            class="nav-link @(Model.StatusFilter == "pending" ? "active" : null)"
            role="tab">
-            Pending
+            Awaiting review
         </a>
         <a asp-action="ListingRequests"
            asp-route-status="approved"
@@ -73,7 +73,7 @@ else
                         @switch (request.Status)
                         {
                             case PluginListingRequestStatus.Pending:
-                                <span class="badge bg-warning">Pending</span>
+                                <span class="badge bg-warning">Awaiting review</span>
                                 break;
                             case PluginListingRequestStatus.Approved:
                                 <span class="badge bg-success">Approved</span>

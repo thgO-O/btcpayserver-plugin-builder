@@ -25,7 +25,13 @@
             @foreach (var setting in Model.Settings)
             {
                 <tr data-key="@setting.key">
-                    <td>@setting.key</td>
+                    <td>
+                        @setting.key
+                        @if (setting.key == PluginBuilder.DataModels.SettingsKeys.AutomaticListingScansEnabled)
+                        {
+                            <div class="small text-muted">Set to true to request an external scan for each new listing request. Manual scan requests remain available when false. Existing requests are not replayed.</div>
+                        }
+                    </td>
                     <td class="value">@setting.value</td>
                     <td>
                         <button type="button" class="btn btn-sm btn-primary edit-btn">Edit</button>

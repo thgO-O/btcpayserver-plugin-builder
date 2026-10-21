@@ -43,7 +43,7 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
         jsonb_build_object('id', lr.id, 'pluginSlug', lr.plugin_slug, 'status', lr.status, 'submittedAt', lr.submitted_at,
           'submittedBy', lr.submitted_by, 'releaseNote', lr.release_note, 'telegramVerificationMessage', lr.telegram_verification_message,
           'userReviews', lr.user_reviews, 'announcementDate', lr.announcement_date, 'reviewedAt', lr.reviewed_at,
-          'reviewedBy', lr.reviewed_by, 'reviewedByToken', lr.reviewed_by_token, 'reviewNote', lr.review_note, 'rejectionReason', lr.rejection_reason)
+          'reviewedBy', lr.reviewed_by, 'reviewedByToken', lr.reviewed_by_token, 'reviewNote', lr.review_note, 'rejectionReason', lr.rejection_reason, 'reviewTarget', lr.review_target)
         """;
 
     [HttpGet("me")]
@@ -61,7 +61,7 @@ public class AdminReviewController(DBConnectionFactory connections, ListingRevie
               (SELECT count(*) FROM builds WHERE state NOT IN ('uploaded', 'failed', 'removed')) AS "activeBuilds",
               (SELECT count(*) FROM admin_event_deliveries WHERE status = 'failed') AS "failedEventDeliveries"
             """, cancellationToken: cancellationToken));
-        return Ok(new { counts, registrationEnabled = settings.RegistrationEnabled, newBuildsEnabled = settings.NewBuildsEnabled });
+        return Ok(new { counts, registrationEnabled = settings.RegistrationEnabled, newBuildsEnabled = settings.NewBuildsEnabled, automaticListingScansEnabled = settings.AutomaticListingScansEnabled });
     }
 
     [HttpGet("users")]

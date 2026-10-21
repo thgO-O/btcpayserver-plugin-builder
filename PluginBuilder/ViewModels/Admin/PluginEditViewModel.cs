@@ -38,6 +38,9 @@ public class PluginEditViewModel : PluginViewModel
     [ValidateNever]
     public PluginSettings PluginSettings { get; set; } = new();
 
+    [ValidateNever]
+    public bool CanRequestScan { get; set; }
+
     [Display(Name = "Logo")]
     public IFormFile? LogoFile { get; set; }
 

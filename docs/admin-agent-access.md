@@ -113,6 +113,8 @@ agent to approve listings: put the review policy in its local instructions.
 | `GET /admin/listing-requests?status=pending&after=0&limit=50` | Pending, approved, rejected or all requests. |
 | `GET /admin/listing-requests/{id}` | Submission and review details, including reviewing account/token. |
 | `POST /admin/listing-requests/{id}/review` | `{"decision":"approve","note":"Review findings…"}` or `reject`; nonempty note up to 10,000 characters. |
+| `POST /admin/plugins/{pluginSlug}/scan` | Request a standalone external scan of the latest successful build; HTTP 202 confirms recording the request. |
+| `POST /admin/listing-requests/{id}/scan` | Request an external scan of a pending listing's pinned source. Manual requests work with automation disabled. See [External plugin scans](plugin-scans.md). |
 | `POST /admin/users/{userId}/lock` | `{"reason":"Spam burst"}` for an indefinite lock; optionally set `until` to a future ISO-8601 timestamp. See [Moderation](#moderation). |
 | `POST /admin/users/{userId}/unlock` | `{"reason":"False positive"}`. HTTP 409 if the account is not locked. |
 | `POST /admin/plugins/{pluginSlug}/builds/{buildId}/cancel` | `{"reason":"Exec in csproj"}`. HTTP 409 if the build has already finished. |

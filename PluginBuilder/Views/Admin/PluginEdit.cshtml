@@ -41,6 +41,15 @@
             </div>
         }
     </div>
+    <div>
+        <form asp-action="RequestPluginScan" asp-route-pluginSlug="@Model.PluginSlug" asp-route-tab="@Model.ActiveTab" method="post">
+            <button id="RequestPluginScan" class="btn btn-outline-primary" type="submit" disabled="@(!Model.CanRequestScan)">Request scan</button>
+        </form>
+        @if (!Model.CanRequestScan)
+        {
+            <small class="text-muted">A successful build with a resolved commit is required.</small>
+        }
+    </div>
 </div>
 
 <nav id="SectionNav" class="mb-4">

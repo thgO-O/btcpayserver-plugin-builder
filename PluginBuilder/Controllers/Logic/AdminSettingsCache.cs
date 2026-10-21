@@ -1,4 +1,5 @@
 using Npgsql;
+using PluginBuilder.DataModels;
 using PluginBuilder.Util.Extensions;
 
 namespace PluginBuilder.Controllers.Logic;
@@ -14,6 +15,7 @@ public class AdminSettingsCache
     public int RateLimitWindowSeconds { get; private set; } = 60;
     public bool RegistrationEnabled { get; private set; }
     public bool NewBuildsEnabled { get; private set; }
+    public bool AutomaticListingScansEnabled { get; private set; }
 
     public async Task RefreshIsVerifiedEmailRequiredForPublish(NpgsqlConnection conn)
     {
@@ -67,5 +69,6 @@ public class AdminSettingsCache
     {
         RegistrationEnabled = await conn.GetRegistrationEnabledSetting();
         NewBuildsEnabled = await conn.GetNewBuildsEnabledSetting();
+        AutomaticListingScansEnabled = bool.TryParse(await conn.SettingsGetAsync(SettingsKeys.AutomaticListingScansEnabled), out var enabled) && enabled;
     }
 }

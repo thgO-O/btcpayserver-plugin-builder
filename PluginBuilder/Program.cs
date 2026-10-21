@@ -286,6 +286,7 @@ public class Program
         });
         services.AddScoped<PluginOwnershipService>();
         services.AddScoped<VersionLifecycleService>();
+        services.AddScoped<PluginScanService>();
         services.AddSingleton<BtcMapsService>();
 
         services.AddRateLimiter(options =>

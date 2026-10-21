@@ -463,7 +463,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
         // Verify the request is visible in the list - use table row to avoid ambiguity
         var row = t.Page.Locator($"tbody tr:has-text('{pluginSlug}')");
         await Expect(row).ToBeVisibleAsync();
-        await Expect(row.Locator(".badge.bg-warning:text('Pending')")).ToBeVisibleAsync();
+        await Expect(row.Locator(".badge.bg-warning:text('Awaiting review')")).ToBeVisibleAsync();
 
         // Click to view details - scoped to the specific row
         await row.Locator($"a[href*='/admin/listing-requests/{requestId}']").ClickAsync();
@@ -476,6 +476,7 @@ public class PluginRequestListingUITest(ITestOutputHelper output) : PageTest
 
         // Approve the request
         await t.Page.ClickAsync("button.btn.btn-success:text('Approve')");
+        await t.Page.FillAsync("#reviewNote", "Reviewed metadata and source.");
         await t.Page.ClickAsync("button[type='submit'].btn.btn-success:text('Approve')"); // Confirm in modal
 
         // Should redirect back to listing requests page

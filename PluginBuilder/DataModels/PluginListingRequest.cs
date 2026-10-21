@@ -1,3 +1,5 @@
+using PluginBuilder.Services;
+
 namespace PluginBuilder.DataModels;
 
 public class PluginListingRequest
@@ -14,6 +16,9 @@ public class PluginListingRequest
     public DateTimeOffset? ReviewedAt { get; set; }
     public string? ReviewedBy { get; set; }
     public string? RejectionReason { get; set; }
+    public string? ReviewNote { get; set; }
+    public string? ReviewTargetJson { get; set; }
+    public PluginScanTarget? ReviewTarget => PluginScanTarget.FromJson(ReviewTargetJson);
 }
 
 public class ListingHistoryViewModel

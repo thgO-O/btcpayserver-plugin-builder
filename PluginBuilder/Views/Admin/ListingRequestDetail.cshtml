@@ -11,11 +11,19 @@
     @if (Model.Status == PluginListingRequestStatus.Pending)
     {
         <div class="d-flex align-items-center gap-2">
+            <form asp-action="RequestListingScan" asp-route-requestId="@Model.Id" method="post">
+                <button id="RequestListingScan" type="submit" class="btn btn-outline-primary" disabled="@(!Model.CanRequestScan)">Request scan</button>
+            </form>
             <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveModal">Approve</button>
             <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">Reject</button>
         </div>
     }
 </div>
+
+@if (Model.Status == PluginListingRequestStatus.Pending && !Model.CanRequestScan)
+{
+    <p class="text-muted">A successful build with a resolved commit and a valid plugin directory is required to request a scan. You can still review this listing manually.</p>
+}
 
 <div class="row mt-0">
     <div class="col-lg-6">
@@ -74,8 +82,24 @@
             </div>
             <div class="mb-3">
                 <div class="text-muted fw-semibold small text-uppercase mb-1" style="letter-spacing:.05em;">Status</div>
-				<p class="mb-0">@Model.Status</p>
+				<p class="mb-0">@(Model.Status == PluginListingRequestStatus.Pending ? "Awaiting review" : Model.Status.ToString())</p>
             </div>
+            @if (Model.ReviewTarget is { } target)
+            {
+                <div class="mb-3">
+                    <div class="text-muted fw-semibold small text-uppercase mb-1">Review target</div>
+                    <div>Build @target.BuildId · <code>@target.GitCommit</code></div>
+                    <div class="small text-break">@target.Repository</div>
+                    <div class="small">@(target.PluginDirectory ?? "Repository root")</div>
+                </div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.ReviewNote) && Model.Status == PluginListingRequestStatus.Approved)
+            {
+                <div class="mb-3">
+                    <div class="text-muted fw-semibold small text-uppercase mb-1">Review note</div>
+                    <p style="white-space: pre-wrap;">@Model.ReviewNote</p>
+                </div>
+            }
             @if (Model.ReviewedAt.HasValue)
             {
                 <div class="mb-3">
@@ -174,6 +198,8 @@
                 <div class="modal-body">
                     <p>Are you sure you want to approve this listing request?</p>
                     <p class="mb-0">The plugin <strong>@Model.PluginSlug</strong> will be <strong>Listed</strong> in the plugin directory.</p>
+                    <label for="reviewNote" class="form-label mt-3">Review note</label>
+                    <textarea id="reviewNote" name="reviewNote" class="form-control" rows="4" required maxlength="10000"></textarea>
                 </div>
                 <div class="modal-footer border-0">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>

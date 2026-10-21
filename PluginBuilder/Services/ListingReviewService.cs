@@ -12,8 +12,8 @@ public class ListingReviewService(DBConnectionFactory connections, EmailService 
     public async Task<Outcome> Review(int requestId, string reviewerId, bool approve, string? note,
         Func<string, string?> publicUrl, CancellationToken cancellationToken = default, Guid? tokenId = null)
     {
-        if (!approve && string.IsNullOrWhiteSpace(note))
-            throw new ArgumentException("A rejection reason is required.", nameof(note));
+        if (string.IsNullOrWhiteSpace(note))
+            throw new ArgumentException("A review note is required.", nameof(note));
         if (note?.Length > 10000)
             throw new ArgumentException("Review note must not exceed 10000 characters.", nameof(note));
         await using var conn = await connections.Open(cancellationToken);

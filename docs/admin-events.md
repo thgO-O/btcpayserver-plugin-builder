@@ -17,6 +17,7 @@ No AI provider or review engine runs inside Plugin Builder.
 | `build.succeeded` | A build reaches `uploaded`. |
 | `build.failed` | A build transitions to `failed`. |
 | `listing.requested` | A new listing request is saved. Email reminders do not create another request event. |
+| `plugin.scan_requested` | An admin requests a scan, or a new listing is submitted with `AutomaticListingScansEnabled=true`. Includes the pinned source and optional listing request ID. See [External plugin scans](plugin-scans.md). |
 | `listing.approved` / `listing.rejected` | A pending request receives a decision. Includes reviewing account, token ID and note. |
 | `user.locked` / `user.unlocked` | An admin locks or unlocks an account through the API. Includes the acting account and token ID, the reason, `until` (null when indefinite) and, for a lock, the builds it cancelled. |
 | `build.cancelled` | An admin cancels an unfinished build, directly or by locking the account that started it. Precedes that build's `build.failed`. Includes the acting account and token ID, the reason and the state it was cancelled from. |

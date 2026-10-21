@@ -13,5 +13,6 @@ public static class SettingsKeys
     public const string RateLimitWindowSeconds = nameof(RateLimitWindowSeconds);
     public const string RegistrationEnabled = nameof(RegistrationEnabled);
     public const string NewBuildsEnabled = nameof(NewBuildsEnabled);
+    public const string AutomaticListingScansEnabled = nameof(AutomaticListingScansEnabled);
     public const string NewBuildsWhitelist = nameof(NewBuildsWhitelist);
 }

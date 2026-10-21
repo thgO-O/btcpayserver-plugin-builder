@@ -38,6 +38,8 @@ All parameters are configured via environment variables.
 email/webhook subscriptions, signatures, delivery retries, and local agent cursors.
 [Admin agent access](docs/admin-agent-access.md) covers revocable tokens, token activity
 audits, user/build inspection, listing review and the local connection helper.
+[External plugin scans](docs/plugin-scans.md) covers manual scan requests, the
+disabled-by-default listing automation flag, and the external Warden coordinator.
 
 Full interactive API documentation is available at [`/docs`](https://plugin-builder.btcpayserver.org/docs) on the live server.
 
