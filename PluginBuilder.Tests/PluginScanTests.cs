@@ -137,6 +137,64 @@ public class PluginScanTests(ITestOutputHelper output) : UnitTestBase(output)
     }
 
     [Fact]
+    public async Task AScanWaitsForAConcurrentApprovalAndDoesNotEmitAfterIt()
+    {
+        await using var server = await StartServer();
+        await using var conn = await server.GetService<DBConnectionFactory>().Open();
+        await using var observer = await server.GetService<DBConnectionFactory>().Open();
+        var admin = await CreateAdmin(server, conn);
+        var slug = new PluginSlug("scan-approval-race");
+        await conn.NewPlugin(slug, admin);
+        var target = await AddBuild(conn, slug, 'a');
+        var requestId = await CreateRequest(conn, slug, admin, target);
+        await using var reviewConnections = ConnectionFactory(conn.ConnectionString, "scan-race-review");
+        await using var scanConnections = ConnectionFactory(conn.ConnectionString, "scan-race-request");
+        using var scope = server.WebApp.Services.CreateScope();
+        var reviews = ActivatorUtilities.CreateInstance<ListingReviewService>(scope.ServiceProvider, reviewConnections);
+        var scans = new PluginScanService(scanConnections);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var barrier = await conn.BeginTransactionAsync(timeout.Token);
+
+        // Pause approval in its event trigger, after the pending row has been updated
+        // but before commit. A scan without the row lock can still read the old status.
+        await conn.ExecuteAsync(new CommandDefinition("SELECT singleton FROM admin_event_counter FOR UPDATE",
+            transaction: barrier, cancellationToken: timeout.Token));
+        var approval = reviews.Review(requestId, admin, true, "Approved", _ => null, timeout.Token);
+        Task<PluginScanService.Result>? scan = null;
+        try
+        {
+            await WaitForBlockedOperation(observer, "scan-race-review", approval, timeout.Token);
+            scan = scans.Request(null, requestId, admin, null, timeout.Token);
+            // Both implementations reach a lock wait: the correct scan waits for
+            // the listing row; a stale read instead waits to append its scan event.
+            await WaitForBlockedOperation(observer, "scan-race-request", scan, timeout.Token);
+            await barrier.CommitAsync(timeout.Token);
+
+            Assert.Equal(ListingReviewService.Outcome.Completed, await approval.WaitAsync(timeout.Token));
+            Assert.Equal(PluginScanService.Outcome.AlreadyProcessed, (await scan.WaitAsync(timeout.Token)).Outcome);
+            Assert.Empty(await ScanEvents(conn));
+            Assert.Equal(1, await conn.ExecuteScalarAsync<int>(
+                "SELECT count(*) FROM admin_events WHERE type = 'listing.approved' AND data->>'listingRequestId' = @id",
+                new { id = requestId.ToString() }));
+            Assert.Equal(PluginListingRequestStatus.Approved, (await conn.GetListingRequest(requestId))!.Status);
+        }
+        finally
+        {
+            timeout.Cancel();
+            await barrier.DisposeAsync();
+            try
+            {
+                await approval.WaitAsync(TimeSpan.FromSeconds(10));
+                if (scan is not null) await scan.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch
+            {
+                // Release and observe blocked operations without masking an assertion.
+            }
+        }
+    }
+
+    [Fact]
     public async Task AnInvalidLatestUploadedBuildDoesNotFallBackToAnOlderValidBuild()
     {
         await using var server = await StartServer();
@@ -414,6 +472,32 @@ public class PluginScanTests(ITestOutputHelper output) : UnitTestBase(output)
             await page.Locator("#ReleaseNote").FillAsync("Release");
             await page.Locator("#TelegramVerificationMessage").FillAsync("https://t.me/btcpayserver/123");
             await page.Locator("#UserReviews").FillAsync("Reviewed at https://example.com/review");
+        }
+    }
+
+    private static DBConnectionFactory ConnectionFactory(string connectionString, string applicationName)
+    {
+        var settings = new NpgsqlConnectionStringBuilder(connectionString) { ApplicationName = applicationName };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["POSTGRES"] = settings.ToString()
+        }).Build();
+        return new DBConnectionFactory(config);
+    }
+
+    private static async Task WaitForBlockedOperation(NpgsqlConnection observer, string applicationName, Task pending, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        while (!await observer.ExecuteScalarAsync<bool>(new CommandDefinition("""
+                   SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+                       WHERE datname = current_database() AND application_name = @applicationName
+                         AND wait_event_type = 'Lock' AND cardinality(pg_blocking_pids(pid)) > 0)
+                   """, new { applicationName }, cancellationToken: timeout.Token)))
+        {
+            if (pending.IsCompleted) await pending;
+            Assert.False(pending.IsCompleted, "The operation must reach the competing transaction before the barrier is released.");
+            await Task.Delay(10, timeout.Token);
         }
     }
 

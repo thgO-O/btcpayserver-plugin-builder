@@ -406,6 +406,89 @@
         }
       }
     },
+    "/admin/plugins/{pluginSlug}/scan": {
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Request a standalone external plugin scan",
+        "description": "Requires a current ServerAdmin account. Manual scan requests remain available when AutomaticListingScansEnabled is false. Uses the highest-ID uploaded build. An invalid latest build returns 422 instead of selecting an older build. Records plugin.scan_requested without changing the listing decision or plugin visibility. No request body is required. See docs/plugin-scans.md.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pluginSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Scan request recorded. An external coordinator processes it; this response does not confirm that a scan has started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "scanRequestId",
+                    "message"
+                  ],
+                  "properties": {
+                    "scanRequestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "scanRequestId": "a0a37831-8c61-4532-b09d-7d6f3ef05d44",
+                  "message": "Scan requested."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Plugin not found."
+          },
+          "422": {
+            "description": "A successful build with a supported repository, resolved commit and valid plugin directory is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message"
+                  ],
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/plugins/{pluginSlug}/builds": {
       "get": {
         "tags": [
@@ -876,6 +959,108 @@
           },
           "404": {
             "description": "Resource not found."
+          }
+        }
+      }
+    },
+    "/admin/listing-requests/{requestId}/scan": {
+      "post": {
+        "tags": [
+          "Admin Agent"
+        ],
+        "summary": "Request an external scan of a pending listing",
+        "description": "Requires a current ServerAdmin account. Manual scan requests remain available when AutomaticListingScansEnabled is false. Uses the listing's pinned source. A legacy pending listing without a snapshot captures a validated source on its first manual scan. Records plugin.scan_requested without changing the listing decision or plugin visibility. No request body is required. See docs/plugin-scans.md.",
+        "security": [
+          {
+            "Basic": []
+          },
+          {
+            "AdminToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Scan request recorded. An external coordinator processes it; this response does not confirm that a scan has started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "scanRequestId",
+                    "message"
+                  ],
+                  "properties": {
+                    "scanRequestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "scanRequestId": "a0a37831-8c61-4532-b09d-7d6f3ef05d44",
+                  "message": "Scan requested."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed."
+          },
+          "403": {
+            "description": "Admin role required."
+          },
+          "404": {
+            "description": "Listing request not found."
+          },
+          "409": {
+            "description": "The listing request has already been processed. Fetch its current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message"
+                  ],
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A successful build with a supported repository, resolved commit and valid plugin directory is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message"
+                  ],
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
