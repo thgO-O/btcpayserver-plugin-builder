@@ -34,6 +34,7 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
     [InlineData(false, true, null, null)]
     [InlineData(false, false, "logs", null)]
     [InlineData(false, false, "publication", null)]
+    [InlineData(false, false, "missing-title", null)]
     [InlineData(false, false, null, "suspend")]
     [InlineData(false, false, null, "restart")]
     [InlineData(false, false, null, "shutdown")]
@@ -87,8 +88,10 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var slug = new PluginSlug("publication-" + Guid.NewGuid().ToString("N")[..8]);
         await using var connection = await tester.GetService<DBConnectionFactory>().Open();
         Assert.True(await connection.NewPlugin(slug, user));
+        if (persistenceFailure != "missing-title")
+            await connection.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug.ToString() });
         long? previousBuild = null;
-        if (persistenceFailure is not null)
+        if (persistenceFailure is "logs" or "publication")
         {
             previousBuild = await connection.NewBuild(slug, new PluginBuildParameters("https://github.com/example/plugin"));
             var previousId = new FullBuildId(slug, previousBuild.Value);
@@ -189,6 +192,11 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 Assert.IsType<PostgresException>(error);
                 Assert.Equal(Artifact, storage.StoredArtifact);
             }
+            else if (persistenceFailure == "missing-title")
+            {
+                Assert.Equal(PluginTitleValidationException.RequiredMessage, Assert.IsType<BuildServiceException>(error).Message);
+                Assert.Equal(Artifact, storage.StoredArtifact);
+            }
             else
             {
                 Assert.Null(error);
@@ -196,13 +204,13 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
             }
         }
 
-        if (failCleanup || failUpload || persistenceFailure == "publication" || transition == "shutdown")
+        if (failCleanup || failUpload || persistenceFailure is "publication" or "missing-title" || transition == "shutdown")
         {
             Assert.Equal(BuildStates.Failed.ToEventName(), state);
             var persistedError = await connection.ExecuteScalarAsync<string?>(
                 "SELECT build_info->>'error' FROM builds WHERE plugin_slug=@slug AND id=@buildId",
                 new { slug = slug.ToString(), buildId = id.BuildId });
-            if (persistenceFailure is not null || transition == "shutdown")
+            if (persistenceFailure is "logs" or "publication" || transition == "shutdown")
             {
                 // The build page renders this text: database exception details must not reach it.
                 Assert.Equal("Plugin build failed.", persistedError);
@@ -280,6 +288,7 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var slug = new PluginSlug("cancel-publication");
         await using var connection = await tester.GetService<DBConnectionFactory>().Open();
         Assert.True(await connection.NewPlugin(slug, owner));
+        await connection.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug.ToString() });
         Assert.True(await connection.EnsureIdentifierOwnership(slug, "Example"));
         long? previousBuild = null;
         if (hasPreviousVersion)
@@ -400,6 +409,7 @@ public class BuildPublicationTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var slug = new PluginSlug("upload-queue-" + Guid.NewGuid().ToString("N")[..8]);
         await using var connection = await tester.GetService<DBConnectionFactory>().Open();
         Assert.True(await connection.NewPlugin(slug, user));
+        await connection.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug.ToString() });
         const int slots = BuildPolicy.MaxConcurrentBuilds;
         List<FullBuildId> ids = [];
         for (var index = 0; index <= slots; index++)

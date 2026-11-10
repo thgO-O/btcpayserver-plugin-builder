@@ -34,7 +34,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
             new { PluginSlug = pluginSlug, fullBuildId.BuildId });
         var manifest = PluginManifest.Parse(manifestInfoJson);
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
-        await conn.SetPluginSettings(pluginSlug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = "Rockstar Stylist" }, PluginVisibilityEnum.Listed);
 
         await tester.GoToUrl("/public/plugins?embed=1&btcpayVersion=2.3.6-rc2&includePreRelease=true&sort=rating");
         await tester.AssertNoError();
@@ -80,7 +80,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await conn.SetVersionBuild(fullBuildId, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
 
         // Listed should be visible
-        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = "Rockstar Stylist" }, PluginVisibilityEnum.Listed);
         await tester.GoToUrl("/public/plugins");
         await tester.Page!.WaitForSelectorAsync($"a[href='/public/plugins/{slugString}']");
         Assert.True(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
@@ -101,7 +101,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         Assert.DoesNotContain(new string('b', 20), displayedDesc, StringComparison.Ordinal);
 
         // Unlisted shouldn't be visible
-        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Unlisted);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = "Rockstar Stylist" }, PluginVisibilityEnum.Unlisted);
         await tester.GoToUrl("/public/plugins");
         await tester.Page.ReloadAsync();
         Assert.False(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
@@ -130,7 +130,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         await tester.Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
         await Expect(tester.Page.Locator($"a[href='/public/plugins/{slugString}']")).ToHaveCountAsync(0);
 
-        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = "Rockstar Stylist" }, PluginVisibilityEnum.Listed);
         await tester.GoToUrl("/public/plugins");
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync("NicolasDorier");
         await tester.Page.Keyboard.PressAsync("Enter");
@@ -139,7 +139,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         Assert.True(await tester.Page.Locator($"a[href='/public/plugins/{slugString}']").IsVisibleAsync());
 
         // Hidden shouldn't appear
-        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Hidden);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = "Rockstar Stylist" }, PluginVisibilityEnum.Hidden);
         await tester.GoToUrl("/public/plugins");
         await tester.Page.Locator("input[name='searchPluginName']").FillAsync(slugString);
         await tester.Page.Keyboard.PressAsync("Enter");
@@ -160,7 +160,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
         Assert.True(await hiddenAlert.IsVisibleAsync());
 
         //sort tests
-        await conn.SetPluginSettings(slug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = "Rockstar Stylist" }, PluginVisibilityEnum.Listed);
         var reviewer1 = await tester.Server.CreateFakeUserAsync("sort-reviewer1@x.com");
         var reviewer2 = await tester.Server.CreateFakeUserAsync("sort-reviewer2@x.com");
         var reviewer3 = await tester.Server.CreateFakeUserAsync("sort-reviewer3@x.com");
@@ -175,7 +175,7 @@ public class PublicDirectoryUITests(ITestOutputHelper output) : PageTest
             new { PluginSlug = popularSlugString, popularBuild.BuildId });
         var popularManifest = PluginManifest.Parse(popularManifestJson);
         await conn.SetVersionBuild(popularBuild, popularManifest.Version, popularManifest.BTCPayMinVersion, popularManifest.BTCPayMaxVersion, false);
-        await conn.SetPluginSettings(popularSlug, null, PluginVisibilityEnum.Listed);
+        await conn.SetPluginSettings(popularSlug, new PluginSettings { PluginTitle = popularSlugString }, PluginVisibilityEnum.Listed);
 
         // 2) sort=alpha
         const string updateTitleSql = """

@@ -128,7 +128,7 @@ public class PluginBySlugApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
             {
                 pluginSlug,
                 identifier,
-                settings = "{\"pluginTitle\":\"Test plugin\",\"description\":\"Test plugin description\"}",
+                settings = JsonConvert.SerializeObject(new { pluginTitle = pluginSlug, description = "Test plugin description" }),
                 visibility = visibility.ToString().ToLowerInvariant()
             });
 

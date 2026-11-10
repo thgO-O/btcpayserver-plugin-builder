@@ -29,13 +29,14 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
         var listedSlug = $"listed-{suffix}";
         var hiddenSlug = $"hidden-{suffix}";
         const string title = "Shared Directory Title 100%_\\";
+        const string listedTitle = "Listed " + title;
 
         foreach (var (slug, visibility, pluginTitle) in new[]
                  {
                      (unlistedSlug, PluginVisibilityEnum.Unlisted, title),
-                     (lookalikeSlug, PluginVisibilityEnum.Unlisted, (string?)null),
-                     (listedSlug, PluginVisibilityEnum.Listed, title),
-                     (hiddenSlug, PluginVisibilityEnum.Hidden, title)
+                     (lookalikeSlug, PluginVisibilityEnum.Unlisted, "Rockstar Stylist"),
+                     (listedSlug, PluginVisibilityEnum.Listed, listedTitle),
+                     (hiddenSlug, PluginVisibilityEnum.Hidden, "Hidden " + title)
                  })
         {
             var build = await tester.CreatePublishedPluginAsync(ownerId, slug);
@@ -46,7 +47,7 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
             await conn.SetVersionBuild(build, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
             await conn.SetPluginSettings(slug, new PluginSettings
             {
-                PluginTitle = pluginTitle is null ? null : $"  {pluginTitle}  "
+                PluginTitle = $"  {pluginTitle}  "
             }, visibility);
         }
 
@@ -84,7 +85,7 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
             AssertPlugin(html, hiddenSlug, search, present: false);
         }
 
-        // Unlisted plugins fall back to the manifest name only when no custom title is set.
+        // Configured titles take precedence; other plugins' manifest names are not reserved.
         foreach (var search in new[] { "Rockstar Stylist", "ROCKSTAR STYLIST", "  rockstar stylist  " })
         {
             var html = await Search(search);
@@ -93,7 +94,7 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
             AssertPlugin(html, hiddenSlug, search, present: false);
         }
 
-        foreach (var search in new[] { "", "rockstar", "Rockstar Stylist", "Shared", title, "NicolasDorier", ServerTester.RepoUrl })
+        foreach (var search in new[] { "", "rockstar", "Rockstar Stylist", "Shared", listedTitle, "NicolasDorier", ServerTester.RepoUrl })
             AssertPlugin(await Search(search), listedSlug, search, present: true);
 
         AssertPlugin(await Search(lookalikeSlug), lookalikeSlug, lookalikeSlug, present: true);

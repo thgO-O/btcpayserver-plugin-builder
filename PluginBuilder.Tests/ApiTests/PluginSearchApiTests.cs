@@ -31,9 +31,9 @@ public class PluginSearchApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         foreach (var (pluginSlug, visibility, pluginTitle) in new[]
                  {
                      (slug, PluginVisibilityEnum.Unlisted, title),
-                     (lookalike, PluginVisibilityEnum.Unlisted, (string?)null),
-                     (listed, PluginVisibilityEnum.Listed, title),
-                     (hidden, PluginVisibilityEnum.Hidden, title)
+                     (lookalike, PluginVisibilityEnum.Unlisted, "Rockstar Stylist"),
+                     (listed, PluginVisibilityEnum.Listed, "Listed " + title),
+                     (hidden, PluginVisibilityEnum.Hidden, "Hidden " + title)
                  })
         {
             var build = await tester.CreatePublishedPluginAsync(ownerId, pluginSlug);
@@ -44,7 +44,7 @@ public class PluginSearchApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
             await conn.SetVersionBuild(build, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
             await conn.SetPluginSettings(pluginSlug, new PluginSettings
             {
-                PluginTitle = pluginTitle is null ? null : $"  {pluginTitle}  "
+                PluginTitle = $"  {pluginTitle}  "
             }, visibility);
         }
 
@@ -75,7 +75,7 @@ public class PluginSearchApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
                 Assert.Contains(matches, p => p.ProjectSlug == listed);
         }
 
-        // Unlisted plugins fall back to the manifest name only when no custom title is set.
+        // Configured titles take precedence; other plugins' manifest names are not reserved.
         foreach (var search in new[] { "Rockstar Stylist", "ROCKSTAR STYLIST", "  rockstar stylist  " })
         {
             var matches = await Search(search);

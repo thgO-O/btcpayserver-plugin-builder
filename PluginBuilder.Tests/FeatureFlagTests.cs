@@ -122,6 +122,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(pluginSlug, ownerId);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug.ToString() });
         await DisableFeature(tester, conn, SettingsKeys.NewBuildsEnabled);
         gitProvider.Release("FeatureFlags.Api");
 
@@ -157,6 +158,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(pluginSlug, ownerId);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug.ToString() });
 
         using var client = CreateBrowserClient(tester);
         await LogIn(client, email, password);
@@ -223,6 +225,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var pluginSlug = new PluginSlug("api-race-" + Guid.NewGuid().ToString("N")[..8]);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(pluginSlug, ownerId);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug.ToString() });
 
         using var client = tester.CreateHttpClient().SetBasicAuth(email, password);
         using var content = CreateBuildJson(gitProvider.RepositoryUrl);
@@ -250,6 +253,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var pluginSlug = new PluginSlug("ui-race-" + Guid.NewGuid().ToString("N")[..8]);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(pluginSlug, ownerId);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug.ToString() });
 
         using var client = CreateBrowserClient(tester);
         await LogIn(client, email, password);
@@ -352,6 +356,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
 
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(pluginSlug, ownerId);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug.ToString() });
         var buildId = await conn.NewBuild(pluginSlug, new PluginBuildParameters("https://example.invalid/repository.git"));
         var fullBuildId = new FullBuildId(pluginSlug, buildId);
         await conn.UpdateBuild(fullBuildId, BuildStates.Uploaded, new JObject
@@ -441,6 +446,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var pluginSlug = new PluginSlug("queued-disabled-" + Guid.NewGuid().ToString("N")[..8]);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(pluginSlug, ownerId);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug.ToString() });
         await conn.SettingsSetAsync(SettingsKeys.VerifiedGithub, "false");
         await tester.GetService<AdminSettingsCache>().RefreshIsVerifiedGithubRequired(conn);
         List<FullBuildId> fullBuildIds = [];
@@ -551,6 +557,7 @@ public class FeatureFlagTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var pluginSlug = new PluginSlug("mid-prepare-" + Guid.NewGuid().ToString("N")[..8]);
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(pluginSlug, ownerId);
+        await conn.SetPluginSettings(pluginSlug, new PluginSettings { PluginTitle = pluginSlug.ToString() });
         var buildId = await conn.NewBuild(pluginSlug,
             new PluginBuildParameters("https://github.com/example/repository"));
         var fullBuildId = new FullBuildId(pluginSlug, buildId);

@@ -40,6 +40,8 @@ public class DashboardController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePlugin(CreatePluginViewModel model)
     {
+        if (PluginSettings.IsTitleTooLong(model.PluginTitle))
+            ModelState.AddModelError(nameof(model.PluginTitle), PluginTitleValidationException.LengthMessage);
         if (!ModelState.IsValid)
             return View(model);
 
@@ -86,10 +88,11 @@ public class DashboardController(
 
         if (await conn.IsPluginTitleInUse(model.PluginTitle))
         {
-            ModelState.AddModelError(nameof(model.PluginTitle), "This plugin title is already in use. Please choose a different title.");
+            ModelState.AddModelError(nameof(model.PluginTitle), PluginTitleValidationException.DuplicateMessage);
             return View(model);
         }
 
+        await using var transaction = await conn.BeginTransactionAsync();
         if (!await conn.NewPlugin(pluginSlug, userId))
         {
             ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
@@ -117,21 +120,31 @@ public class DashboardController(
             Images = []
         };
 
-        if (!await conn.SetPluginSettings(pluginSlug, baseSettings))
+        var settingsSaved = false;
+        string? titleError = null;
+        try
         {
-            await conn.DeletePlugin(pluginSlug);
+            settingsSaved = await conn.SetPluginSettings(pluginSlug, baseSettings);
+        }
+        catch (PluginTitleValidationException ex)
+        {
+            titleError = ex.Message;
+        }
+
+        if (!settingsSaved)
+        {
+            await transaction.RollbackAsync();
             if (logoUrl is not null)
             {
-                var uploadedBlobName = Path.GetFileName(new Uri(logoUrl).AbsolutePath);
-                try
-                {
-                    await azureStorageClient.DeleteImageFileIfExists(uploadedBlobName);
-                }
-                catch { }
+                await azureStorageClient.TryDeleteUploadedImages([logoUrl]);
+                TempData[TempDataConstant.WarningMessage] = "New uploads were not saved. Please select them again.";
             }
-            ModelState.AddModelError(string.Empty, "Could not complete plugin creation.");
+            ModelState.AddModelError(titleError is not null ? nameof(model.PluginTitle) : string.Empty,
+                titleError ?? "Could not complete plugin creation.");
             return View(model);
         }
+
+        await transaction.CommitAsync();
 
         TempData[TempDataConstant.SuccessMessage] = "Plugin created successfully.";
         if (logoUploadFailed)

@@ -108,6 +108,7 @@ public class VersionLifecycleApiTests(ITestOutputHelper logs) : UnitTestBase(log
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.SetPluginSettings(new PluginSlug(scenario.PluginSlug), new PluginSettings
         {
+            PluginTitle = scenario.PluginSlug,
             RequireGPGSignatureForRelease = true
         });
 

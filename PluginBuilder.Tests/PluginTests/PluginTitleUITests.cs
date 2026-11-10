@@ -1,0 +1,340 @@
+using System.Text.RegularExpressions;
+using Dapper;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Playwright;
+using Microsoft.Playwright.Xunit;
+using Npgsql;
+using PluginBuilder.Services;
+using PluginBuilder.Util.Extensions;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace PluginBuilder.Tests.PluginTests;
+
+[Collection("Playwright Tests")]
+public class PluginTitleUITests(ITestOutputHelper output) : PageTest
+{
+    private readonly XUnitLogger _log = new("PluginTitleUI", output);
+    private const string DuplicateMessage = "This plugin title is already in use. Please choose a different title.";
+
+    [Theory]
+    [InlineData("create")]
+    [InlineData("owner")]
+    [InlineData("admin")]
+    public async Task TitleLengthIsValidatedBeforeUploadsAndAfterTrimming(string operation)
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        UseTrackingStorage(tester);
+        await tester.StartAsync();
+        var ownerId = await SignInVerifiedAdmin(tester);
+        var storage = tester.Server.GetService<TrackingImageStorage>();
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+        var slug = "title-length-" + operation;
+        var page = tester.Page!;
+        var field = operation == "admin" ? "PluginSettings.PluginTitle" : "PluginTitle";
+        var input = operation == "admin" ? "#PluginSettings_PluginTitle" : "#PluginTitle";
+        var form = operation switch { "create" => "form:has(#PluginSlug)", "owner" => "#plugin-setting-form", _ => "#plugin-edit-form" };
+        if (operation == "create")
+            await FillCreation(tester, slug, "Short title");
+        else
+        {
+            await conn.NewPlugin(slug, ownerId);
+            await conn.SetPluginSettings(slug, new PluginSettings
+            {
+                PluginTitle = "Short title", Description = "Keep this description", GitRepository = ServerTester.RepoUrl
+            });
+            await tester.GoToUrl(operation == "owner" ? $"/plugins/{slug}/settings" : $"/admin/plugins/edit/{slug}");
+        }
+
+        var image = Path.Combine(Path.GetTempPath(), $"title-length-{Guid.NewGuid():N}.png");
+        tester.CreateTestImage(image);
+        try
+        {
+            await page.Locator(operation == "admin" ? "#LogoFile" : "#Logo").SetInputFilesAsync(image);
+            // Exercise the server even when client-side maxlength validation is bypassed.
+            await page.Locator(input).EvaluateAsync("(input, title) => input.value = title", new string('x', 501));
+            var response = await SubmitWithoutClientValidation(page, form);
+            Assert.True(response.Status == 200, $"Expected field validation; HTTP {response.Status}, uploaded files: {storage.Uploaded.Count}.");
+            await Expect(page.Locator($"[data-valmsg-for='{field}']")).ToHaveTextAsync("Plugin title must be 500 characters or fewer.");
+            Assert.Empty(storage.Uploaded);
+            if (operation != "create")
+                Assert.Equal("Short title", (await conn.GetSettings(slug))!.PluginTitle);
+
+            // PostgreSQL counts Unicode code points, so a supplementary character counts once.
+            var title = string.Concat(Enumerable.Repeat("𠮷", 500));
+            await page.Locator(input).EvaluateAsync("(input, title) => input.value = title", "  " + title + "  ");
+            response = await SubmitWithoutClientValidation(page, form);
+            Assert.Equal(302, response.Status);
+            Assert.Equal(title, (await conn.GetSettings(slug))!.PluginTitle);
+        }
+        finally { File.Delete(image); }
+    }
+
+    [Fact]
+    public async Task AdminCanRenamePublishedTitlesButCanOnlyClearUnpublishedTitles()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        UseTrackingStorage(tester);
+        await tester.StartAsync();
+        var ownerId = await SignInVerifiedAdmin(tester);
+        await tester.Server.CreatePublishedPluginAsync(ownerId, "title-published", "Current public title");
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+        var page = tester.Page!;
+        await tester.GoToUrl("/admin/plugins/edit/title-published");
+        await page.Locator("#PluginSettings_PluginTitle").FillAsync("");
+        var image = Path.Combine(Path.GetTempPath(), $"title-clear-{Guid.NewGuid():N}.png");
+        tester.CreateTestImage(image);
+        try
+        {
+            await page.Locator("#LogoFile").SetInputFilesAsync(image);
+            await page.Locator("#images-input").SetInputFilesAsync(image);
+            await page.Locator("#plugin-edit-form input[type='submit']").ClickAsync();
+        }
+        finally { File.Delete(image); }
+        await Expect(page.Locator("[data-valmsg-for='PluginSettings.PluginTitle']")).ToHaveTextAsync(
+            "Published plugins must have a title. Enter a title in plugin settings.");
+        Assert.Equal("Current public title", (await conn.GetSettings("title-published"))!.PluginTitle);
+        Assert.Empty(tester.Server.GetService<TrackingImageStorage>().Uploaded);
+
+        await page.Locator("#PluginSettings_PluginTitle").FillAsync("  New public title  ");
+        await page.Locator("#plugin-edit-form input[type='submit']").ClickAsync();
+        await Expect(page.Locator(".alert-success")).ToContainTextAsync("Plugin settings updated successfully");
+        using var client = tester.Server.CreateHttpClient();
+        var response = Newtonsoft.Json.Linq.JObject.Parse(await client.GetStringAsync("/api/v1/plugins/directory/title-published?includePreRelease=true"));
+        Assert.Equal("New public title", response.Value<string>("pluginTitle"));
+        Assert.Equal("Rockstar Stylist", response["manifestInfo"]!.Value<string>("Name"));
+
+        await conn.NewPlugin("title-unpublished", ownerId);
+        await conn.SetPluginSettings("title-unpublished", new PluginSettings { PluginTitle = "Not published" });
+        await tester.GoToUrl("/admin/plugins/edit/title-unpublished");
+        await page.Locator("#PluginSettings_PluginTitle").FillAsync("");
+        await page.Locator("#plugin-edit-form input[type='submit']").ClickAsync();
+        await Expect(page.Locator(".alert-success")).ToContainTextAsync("Plugin settings updated successfully");
+        Assert.Null((await conn.GetSettings("title-unpublished"))!.PluginTitle);
+    }
+
+    [Fact]
+    public async Task CreationAndOwnerAndAdminEditsNormalizeTitlesAndAllowTheirOwnTitle()
+    {
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        await tester.StartAsync();
+        var ownerId = await SignInVerifiedAdmin(tester);
+        var page = tester.Page!;
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+
+        await FillCreation(tester, "title-created", "  Café  Payments  ");
+        await page.Locator("#Create").ClickAsync();
+        await Expect(page).ToHaveURLAsync(new Regex("/plugins/title-created$"));
+        Assert.Equal("Café  Payments", (await conn.GetSettings("title-created"))!.PluginTitle);
+
+        await FillCreation(tester, "title-duplicate", "  CAFÉ  PAYMENTS  ");
+        await page.Locator("#Create").ClickAsync();
+        await Expect(page.Locator("[data-valmsg-for='PluginTitle']")).ToHaveTextAsync(DuplicateMessage);
+        Assert.False(await conn.QuerySingleAsync<bool>("SELECT EXISTS(SELECT 1 FROM plugins WHERE slug='title-duplicate')"));
+
+        Assert.True(await conn.NewPlugin("title-other", ownerId));
+        Assert.True(await conn.SetPluginSettings("title-other", new PluginSettings { PluginTitle = "Other title" }));
+
+        await tester.GoToUrl("/plugins/title-created/settings");
+        await page.Locator("#GitRepository").FillAsync(ServerTester.RepoUrl);
+        await page.Locator("#PluginTitle").FillAsync("  CAFÉ  Payments  ");
+        await page.Locator("button[form='plugin-setting-form']").ClickAsync();
+        await Expect(page.Locator(".alert-success")).ToContainTextAsync("Settings updated successfully");
+        Assert.Equal("CAFÉ  Payments", (await conn.GetSettings("title-created"))!.PluginTitle);
+
+        await page.Locator("#PluginTitle").FillAsync("  OTHER TITLE  ");
+        await page.Locator("button[form='plugin-setting-form']").ClickAsync();
+        await Expect(page.Locator("[data-valmsg-for='PluginTitle']")).ToHaveTextAsync(DuplicateMessage);
+        Assert.Equal("CAFÉ  Payments", (await conn.GetSettings("title-created"))!.PluginTitle);
+
+        await page.Locator("#PluginTitle").FillAsync("   ");
+        await page.Locator("button[form='plugin-setting-form']").ClickAsync();
+        await Expect(page.Locator("[data-valmsg-for='PluginTitle']")).ToContainTextAsync("required");
+        Assert.Equal("CAFÉ  Payments", (await conn.GetSettings("title-created"))!.PluginTitle);
+
+        await tester.GoToUrl("/admin/plugins/edit/title-created");
+        await page.Locator("#PluginSettings_PluginTitle").FillAsync("  Café  payments  ");
+        await page.Locator("#plugin-edit-form input[type='submit']").ClickAsync();
+        await Expect(page.Locator(".alert-success")).ToContainTextAsync("Plugin settings updated successfully");
+        Assert.Equal("Café  payments", (await conn.GetSettings("title-created"))!.PluginTitle);
+
+        await page.Locator("#PluginSettings_PluginTitle").FillAsync("\tOther title ");
+        await page.Locator("#plugin-edit-form input[type='submit']").ClickAsync();
+        await Expect(page.Locator("[data-valmsg-for='PluginSettings.PluginTitle']")).ToHaveTextAsync(DuplicateMessage);
+        Assert.Equal("Café  payments", (await conn.GetSettings("title-created"))!.PluginTitle);
+    }
+
+    [Theory]
+    [InlineData("create", false)]
+    [InlineData("owner", false)]
+    [InlineData("admin", false)]
+    [InlineData("create", true)]
+    [InlineData("owner", true)]
+    [InlineData("admin", true)]
+    public async Task ConcurrentTitleClaimsShowValidationAndPreserveTheLosingPlugin(string operation, bool withUploads)
+    {
+        const string existingLogo = "https://example.invalid/existing-logo.png";
+        const string keptImage = "https://example.invalid/existing-keep.png";
+        const string removedImage = "https://example.invalid/existing-remove.png";
+        await using var tester = new PlaywrightTester(_log);
+        tester.Server.ReuseDatabase = false;
+        UseTrackingStorage(tester);
+        await tester.StartAsync();
+        var ownerId = await SignInVerifiedAdmin(tester);
+        await using var observer = await tester.Server.GetService<DBConnectionFactory>().Open();
+        foreach (var slug in new[] { "title-winner", "title-edited" })
+        {
+            Assert.True(await observer.NewPlugin(slug, ownerId));
+            Assert.True(await observer.SetPluginSettings(slug, new PluginSettings
+            {
+                PluginTitle = slug, Description = "Preserved description", GitRepository = ServerTester.RepoUrl,
+                Logo = withUploads && slug == "title-edited" ? existingLogo : null,
+                Images = withUploads && slug == "title-edited" ? [keptImage, removedImage] : []
+            }));
+        }
+
+        var page = tester.Page!;
+        string field;
+        string submit;
+        if (operation == "create")
+        {
+            await FillCreation(tester, "title-new", "  CAFÉ  RACE  ");
+            field = "PluginTitle";
+            submit = "#Create";
+        }
+        else if (operation == "owner")
+        {
+            await tester.GoToUrl("/plugins/title-edited/settings");
+            await page.Locator("#PluginTitle").FillAsync("  CAFÉ  RACE  ");
+            field = "PluginTitle";
+            submit = "button[form='plugin-setting-form']";
+        }
+        else
+        {
+            await tester.GoToUrl("/admin/plugins/edit/title-edited");
+            await page.Locator("#PluginSettings_PluginTitle").FillAsync("  CAFÉ  RACE  ");
+            field = "PluginSettings.PluginTitle";
+            submit = "#plugin-edit-form input[type='submit']";
+        }
+
+        if (withUploads && operation != "create")
+        {
+            await Expect(page.Locator($"#images-order-list img[src='{keptImage}']")).ToHaveCountAsync(1);
+            await Expect(page.Locator($"#images-order-list img[src='{removedImage}']")).ToHaveCountAsync(1);
+            // Removing an existing image submits the same form, including title and new files.
+            submit = $"button[name='removeImageUrl'][value='{removedImage}']";
+        }
+
+        await using var winner = await tester.Server.GetService<DBConnectionFactory>().Open();
+        await using var transaction = await winner.BeginTransactionAsync();
+        await winner.SetPluginSettings("title-winner", new PluginSettings { PluginTitle = "Café  Race" });
+
+        if (withUploads)
+        {
+            var image = Path.Combine(Path.GetTempPath(), $"title-race-{Guid.NewGuid():N}.png");
+            tester.CreateTestImage(image);
+            try
+            {
+                var payload = new FilePayload { Name = "title-race.png", MimeType = "image/png", Buffer = File.ReadAllBytes(image) };
+                await page.Locator(operation == "admin" ? "#LogoFile" : "#Logo").SetInputFilesAsync(payload);
+                if (operation != "create")
+                    await page.Locator("#images-input").SetInputFilesAsync(payload);
+            }
+            finally { File.Delete(image); }
+        }
+        var request = page.Locator(submit).ClickAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        while (!await observer.QuerySingleAsync<bool>("""
+                   SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+                   WHERE datname=current_database() AND @Pid=ANY(pg_blocking_pids(pid)))
+                   """, new { Pid = winner.ProcessID }))
+            await Task.Delay(10, timeout.Token);
+        await transaction.CommitAsync();
+        await request;
+
+        await Expect(page.Locator($"[data-valmsg-for='{field}']")).ToHaveTextAsync(DuplicateMessage);
+        if (withUploads)
+        {
+            var storage = tester.Server.GetService<TrackingImageStorage>();
+            Assert.Equal(operation == "create" ? 1 : 2, storage.Uploaded.Count);
+            Assert.Equal(storage.Uploaded.Order(), storage.Deleted.Order());
+            await Expect(page.Locator("body")).ToContainTextAsync("New uploads were not saved. Please select them again.");
+            var unchanged = (await observer.GetSettings("title-edited"))!;
+            Assert.Equal(new[] { keptImage, removedImage }, unchanged.Images);
+            Assert.Equal(existingLogo, unchanged.Logo);
+            var html = await page.ContentAsync();
+            foreach (var uploaded in storage.Uploaded)
+                Assert.DoesNotContain("https://example.invalid/" + uploaded, html);
+            if (operation != "create")
+            {
+                var editForm = operation == "owner" ? "#plugin-setting-form" : "#plugin-edit-form";
+                await Expect(page.Locator($"{editForm} img[src='{existingLogo}']")).ToHaveCountAsync(1);
+                await Expect(page.Locator($"#images-order-list img[src='{keptImage}']")).ToHaveCountAsync(1);
+                await Expect(page.Locator($"#images-order-list img[src='{removedImage}']")).ToHaveCountAsync(0);
+            }
+        }
+        await Expect(page.Locator("[data-testid='ui-error-page']")).ToHaveCountAsync(0);
+        Assert.Equal("title-edited", (await observer.GetSettings("title-edited"))!.PluginTitle);
+        Assert.False(await observer.QuerySingleAsync<bool>("SELECT EXISTS(SELECT 1 FROM plugins WHERE slug='title-new')"));
+        Assert.Equal(1, await observer.QuerySingleAsync<int>("""
+            SELECT count(*) FROM plugins
+            WHERE plugin_title_key(settings->>'pluginTitle')=plugin_title_key('CAFÉ  RACE')
+            """));
+    }
+
+    private static async Task FillCreation(PlaywrightTester tester, string slug, string title)
+    {
+        await tester.GoToUrl("/plugins/create");
+        await tester.Page!.Locator("#PluginSlug").FillAsync(slug);
+        await tester.Page.Locator("#PluginTitle").FillAsync(title);
+        await tester.Page.Locator("#Description").FillAsync("Plugin title validation.");
+    }
+
+    private static async Task<string> SignInVerifiedAdmin(PlaywrightTester tester)
+    {
+        var email = await tester.CreateServerAdminAsync("title-admin");
+        await using var conn = await tester.Server.GetService<DBConnectionFactory>().Open();
+        await tester.EnableGithubVerificationAsync(conn);
+        await tester.VerifyUserAccounts(email);
+        await tester.LogIn(email);
+        return await conn.QuerySingleAsync<string>("SELECT \"Id\" FROM \"AspNetUsers\" WHERE \"Email\"=@Email", new { Email = email });
+    }
+
+    private static async Task<IResponse> SubmitWithoutClientValidation(IPage page, string selector)
+    {
+        var form = page.Locator(selector);
+        var action = await form.EvaluateAsync<string>("form => form.action");
+        return await page.RunAndWaitForResponseAsync(
+            () => form.EvaluateAsync("form => HTMLFormElement.prototype.submit.call(form)"),
+            response => response.Request.Method == "POST" && response.Url == action);
+    }
+
+    private static void UseTrackingStorage(PlaywrightTester tester) => tester.Server.ConfigureServices = services =>
+    {
+        services.RemoveAll<AzureStorageClient>();
+        services.AddSingleton<TrackingImageStorage>();
+        services.AddSingleton<AzureStorageClient>(sp => sp.GetRequiredService<TrackingImageStorage>());
+    };
+
+    private sealed class TrackingImageStorage(IConfiguration configuration) : AzureStorageClient(configuration)
+    {
+        public List<string> Uploaded { get; } = [];
+        public List<string> Deleted { get; } = [];
+        public override Task<string> UploadImageFile(IFormFile file, string blobName)
+        {
+            Uploaded.Add(blobName);
+            return Task.FromResult("https://example.invalid/" + blobName);
+        }
+        public override Task DeleteImageFileIfExists(string blobName)
+        {
+            Deleted.Add(blobName);
+            return Task.CompletedTask;
+        }
+    }
+}
