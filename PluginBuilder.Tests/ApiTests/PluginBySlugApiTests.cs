@@ -145,7 +145,7 @@ public class PluginBySlugApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         Assert.Equal(new[] { "AAA other package", "ZZZ package" },
             alphaVersions.Select(v => v.ManifestInfo["Name"]!.ToString()).Order());
         Assert.Empty(JArray.Parse(await client.GetStringAsync(
-            "/api/v1/plugins?searchPluginName=ZZZ%20package&includePreRelease=true")));
+            "/api/v1/plugins?searchPluginName=ZZZ%20package&includePreRelease=true&includeAllVersions=true")));
     }
 
     private static async Task InsertPlugin(
