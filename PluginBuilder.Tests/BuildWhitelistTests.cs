@@ -57,6 +57,7 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var slug = NewSlug();
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(slug, userId);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug.ToString() });
         var previousBuild = await conn.NewBuild(slug, new PluginBuildParameters(git.RepositoryUrl));
         await conn.UpdateBuild(new FullBuildId(slug, previousBuild), BuildStates.Failed, new JObject
         {
@@ -396,6 +397,7 @@ public class BuildWhitelistTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var slug = NewSlug();
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(slug, userId);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug.ToString() });
         // Configured SMTP ensures publishing checks cannot silently skip verification.
         await tester.GetService<EmailService>().SaveEmailSettingsToDatabase(new EmailSettingsViewModel
         {

@@ -444,6 +444,11 @@ public static class NpgsqlConnectionExtensions
         if (restriction is not null)
             throw new BuildServiceException(restriction);
 
+        if (!await connection.ExecuteScalarAsync<bool>(
+                "SELECT plugin_title_key(settings->>'pluginTitle') IS NOT NULL FROM plugins WHERE slug=@pluginSlug",
+                new { pluginSlug = pluginSlug.ToString() }, tx))
+            throw new PluginTitleValidationException(PluginTitleValidationException.RequiredMessage);
+
         var unfinished = await connection.ExecuteScalarAsync<int>(
             "SELECT count(*) FROM builds WHERE triggered_by = @userId AND state = ANY(@states)",
             new { userId, states = BuildStatesExtensions.UnfinishedEventNames }, tx);

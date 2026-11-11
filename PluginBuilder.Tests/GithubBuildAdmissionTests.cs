@@ -89,6 +89,7 @@ public class GithubBuildAdmissionTests(ITestOutputHelper logs) : UnitTestBase(lo
         var slug = new PluginSlug("legacy-admission");
         await using var conn = await tester.GetService<DBConnectionFactory>().Open();
         await conn.NewPlugin(slug, userId);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug.ToString() });
         var proof = restriction is "unverified" or "lock" or "late-unverified" ? null : Proof;
         long? githubId = restriction is "id" or "late-lock" ? 123 : null;
         await conn.ExecuteAsync("""UPDATE "AspNetUsers" SET "GithubUserId" = @githubId, "GithubGistUrl" = @proof, "AccountDetail" = '{"github":"Owner"}'::jsonb WHERE "Id" = @userId""", new { userId, githubId, proof });

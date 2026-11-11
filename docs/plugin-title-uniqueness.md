@@ -8,9 +8,10 @@ or later, matching the project's PostgreSQL image.
 
 Configured titles share one namespace across visibility states. Editing one's own
 title, including changing its case, is allowed. Null and blank titles have no key.
-Legacy plugins can continue using the selected published manifest's `Name` as a
-public fallback. Manifest names can coincide with configured titles because the
-index covers only `settings.pluginTitle`.
+The public title, title search and alphabetical ordering use
+`settings.pluginTitle`. Manifest `Name` remains package metadata. Both UI and
+API build admission require a configured nonblank title, so an untitled legacy
+draft must have its title set before starting a build.
 
 Creation and owner/admin title edits require a nonblank title. These forms check
 title length before uploading files. Titles are limited to 500 Unicode code points

@@ -28,6 +28,68 @@ public class BuildUserLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
     private const string Password = "123456";
     private const int Requests = BuildPolicy.MaxActiveBuildsPerUser + 2;
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("\t \u00a0", false)]
+    [InlineData(null, true)]
+    public async Task UntitledLegacyDraftRequiresATitleBeforeUiOrApiBuild(string? title, bool isCoOwner)
+    {
+        var git = new GatedGitProvider(1);
+        var sandbox = new AdmissionTestSandbox();
+        await using var tester = Create("UntitledLegacyBuild");
+        tester.ReuseDatabase = false;
+        tester.ConfigureServices = services =>
+        {
+            sandbox.Register(services);
+            services.RemoveAll<IGitHostingProvider>();
+            services.AddSingleton<IGitHostingProvider>(git);
+        };
+        await tester.Start();
+        MarkExecutorReady(tester);
+        await using var conn = await tester.GetService<DBConnectionFactory>().Open();
+        await EnableBuilds(tester, conn);
+        var email = NewEmail();
+        var requesterId = await tester.CreateFakeUserAsync(email);
+        var ownerId = isCoOwner ? await tester.CreateFakeUserAsync() : requesterId;
+        var slug = NewSlug();
+        await conn.NewPlugin(slug, ownerId);
+        if (isCoOwner)
+            await conn.AddUserPlugin(slug, requesterId);
+        await conn.ExecuteAsync("UPDATE plugins SET settings=jsonb_build_object('pluginTitle', @Title::text) WHERE slug=@Slug",
+            new { Title = title, Slug = slug.ToString() });
+        using var api = tester.CreateHttpClient().SetBasicAuth(email, Password);
+        var rejected = await PostApiBuild(api, git, slug);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, rejected.Status);
+        Assert.Contains(PluginTitleValidationException.RequiredMessage, rejected.Body);
+        Assert.Contains("pluginTitle", rejected.Body);
+
+        using var browser = CreateBrowser(tester);
+        await LogIn(browser, email, Password);
+        using var page = await browser.GetAsync($"/plugins/{slug}/create");
+        page.EnsureSuccessStatusCode();
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["GitRepository"] = git.RepositoryUrl, ["GitRef"] = "main", ["BuildConfig"] = ServerTester.BuildCfg,
+            ["__RequestVerificationToken"] = AntiforgeryToken(await page.Content.ReadAsStringAsync())
+        });
+        using var response = await browser.PostAsync($"/plugins/{slug}/create", form);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal($"/plugins/{slug}/settings", response.Headers.Location?.ToString());
+        using var settingsPage = await browser.GetAsync(response.Headers.Location);
+        var settingsHtml = await settingsPage.Content.ReadAsStringAsync();
+        Assert.Contains(PluginTitleValidationException.RequiredMessage, settingsHtml);
+        if (isCoOwner)
+            Assert.DoesNotContain("id=\"PluginTitle\"", settingsHtml);
+        Assert.Equal(0, await BuildCount(conn, slug));
+        Assert.False(await conn.QuerySingleAsync<bool>("SELECT EXISTS(SELECT 1 FROM builds_ids WHERE plugin_slug=@Slug)", new { Slug = slug.ToString() }));
+
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = "Legacy configured title" });
+        Assert.Equal(HttpStatusCode.Created, (await PostApiBuild(api, git, slug)).Status);
+        await WaitForFinishedBuilds(conn, slug);
+        Assert.Equal(1, await BuildCount(conn, slug));
+    }
+
     [Fact]
     public async Task InitialUiBuildDefaultsPreserveAConcurrentTitleEdit()
     {
@@ -111,6 +173,7 @@ public class BuildUserLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var slug = NewSlug();
         await conn.NewPlugin(slug, ownerId);
         await conn.AddUserPlugin(slug, coOwnerId);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug.ToString() });
         // Claim the identifier up front; this test is about admission, not the first-build identifier claim.
         await conn.ExecuteAsync("UPDATE plugins SET identifier = @identifier WHERE slug = @slug",
             new { identifier = GatedGitProvider.Identifier, slug = slug.ToString() });
@@ -162,6 +225,7 @@ public class BuildUserLimitTests(ITestOutputHelper logs) : UnitTestBase(logs)
         var userId = await tester.CreateFakeUserAsync(email);
         var slug = NewSlug();
         await conn.NewPlugin(slug, userId);
+        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug.ToString() });
         for (var i = 0; i < BuildPolicy.MaxActiveBuildsPerUser; i++)
             await conn.NewBuild(slug, new PluginBuildParameters(git.RepositoryUrl), triggeredBy: userId);
 

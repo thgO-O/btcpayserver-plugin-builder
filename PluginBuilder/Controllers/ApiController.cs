@@ -94,12 +94,12 @@ public class ApiController(
         {
             filters.Add("""
                         (p.visibility = 'listed' OR p.slug = @searchTerm OR p.identifier = @searchTerm
-                         OR LOWER(BTRIM(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name'))) = LOWER(@searchTerm))
+                         OR LOWER(BTRIM(p.settings->>'pluginTitle')) = LOWER(@searchTerm))
                         """);
             filters.Add("""
                         (p.slug ILIKE @searchPattern OR p.identifier = @searchTerm
-                         OR LOWER(BTRIM(COALESCE(p.settings->>'pluginTitle', b.manifest_info->>'Name'))) = LOWER(@searchTerm)
-                         OR b.manifest_info->>'Name' ILIKE @searchPattern)
+                         OR LOWER(BTRIM(p.settings->>'pluginTitle')) = LOWER(@searchTerm)
+                         OR p.settings->>'pluginTitle' ILIKE @searchPattern)
                         """);
         }
 
@@ -117,7 +117,7 @@ public class ApiController(
                      JOIN builds b ON b.plugin_slug = lv.plugin_slug AND b.id = lv.build_id
                      JOIN plugins p ON b.plugin_slug = p.slug
                      {whereClause}
-                     ORDER BY manifest_info->>'Name'
+                     ORDER BY p.settings->>'pluginTitle'
                      """;
         var rows =
             await conn.QueryAsync<(string plugin_slug, int[] ver, string settings, long id, string manifest_info, string build_info, int[] btcpay_min_ver,
@@ -422,6 +422,11 @@ public class ApiController(
             acceptedBuildId = await conn.NewBuildWithinUserLimit(pluginSlug, model.ToBuildParameter(),
                 userManager.GetUserId(User)!, adminSettingsCache.IsGithubVerificationRequired);
         }
+        catch (PluginTitleValidationException ex)
+        {
+            ModelState.AddModelError("pluginTitle", ex.Message);
+            return ValidationErrorResult(ModelState);
+        }
         catch (BuildServiceException)
         {
             return Forbid();
@@ -700,7 +705,7 @@ public class ApiController(
 
         return new PublishedVersion
         {
-            PluginTitle = settings?.PluginTitle ?? manifestInfo["Name"]?.ToString(),
+            PluginTitle = settings?.PluginTitle,
             Description = settings?.Description ?? manifestInfo["Description"]?.ToString(),
             ProjectSlug = pluginSlug,
             Version = string.Join('.', version),

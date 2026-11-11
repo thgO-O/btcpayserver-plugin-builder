@@ -361,6 +361,11 @@ public class PluginController(
             acceptedBuildId = await conn.NewBuildWithinUserLimit(pluginSlug, model.ToBuildParameter(),
                 userManager.GetUserId(User)!, adminSettingsCache.IsGithubVerificationRequired);
         }
+        catch (PluginTitleValidationException ex)
+        {
+            TempData[TempDataConstant.WarningMessage] = ex.Message;
+            return RedirectToAction(nameof(Settings), new { pluginSlug = pluginSlug.ToString() });
+        }
         catch (BuildServiceException ex)
         {
             TempData[TempDataConstant.WarningMessage] = ex.Message;

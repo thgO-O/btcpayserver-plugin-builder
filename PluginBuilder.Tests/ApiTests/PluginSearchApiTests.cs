@@ -72,20 +72,20 @@ public class PluginSearchApiTests(ITestOutputHelper logs) : UnitTestBase(logs)
         {
             var matches = await Search(search);
             Assert.DoesNotContain(matches, p => p.ProjectSlug == slug || p.ProjectSlug == lookalike || p.ProjectSlug == hidden);
-            if (search == "rockstar")
+            if (search == "Shared")
                 Assert.Contains(matches, p => p.ProjectSlug == listed);
         }
 
-        // Unlisted plugins fall back to the manifest name only when no custom title is set.
+        // Manifest metadata cannot supply a public title or make a plugin match a title search.
         foreach (var search in new[] { "Rockstar Stylist", "ROCKSTAR STYLIST", "  rockstar stylist  " })
         {
             var matches = await Search(search);
-            Assert.Contains(matches, p => p.ProjectSlug == lookalike);
-            Assert.DoesNotContain(matches, p => p.ProjectSlug == slug || p.ProjectSlug == hidden);
-            Assert.Contains(matches, p => p.ProjectSlug == listed);
+            Assert.Empty(matches);
         }
 
-        Assert.Contains(await Search(lookalike), p => p.ProjectSlug == lookalike);
+        var legacy = Assert.Single(await Search(lookalike), p => p.ProjectSlug == lookalike);
+        Assert.Null(legacy.PluginTitle);
+        Assert.Equal("Rockstar Stylist", legacy.ManifestInfo["Name"]?.ToString());
         var browsing = await Search(null);
         Assert.Contains(browsing, p => p.ProjectSlug == listed);
         Assert.DoesNotContain(browsing, p => p.ProjectSlug == hidden);

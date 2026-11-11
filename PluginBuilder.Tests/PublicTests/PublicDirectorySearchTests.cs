@@ -86,16 +86,17 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
             AssertPlugin(html, hiddenSlug, search, present: false);
         }
 
-        // Unlisted plugins fall back to the manifest name only when no custom title is set.
+        // Manifest metadata cannot make a plugin match a public title search.
         foreach (var search in new[] { "Rockstar Stylist", "ROCKSTAR STYLIST", "  rockstar stylist  " })
         {
             var html = await Search(search);
-            AssertPlugin(html, lookalikeSlug, search, present: true);
+            AssertPlugin(html, lookalikeSlug, search, present: false);
             AssertPlugin(html, unlistedSlug, search, present: false);
             AssertPlugin(html, hiddenSlug, search, present: false);
+            AssertPlugin(html, listedSlug, search, present: false);
         }
 
-        foreach (var search in new[] { "", "rockstar", "Rockstar Stylist", "Shared", listedTitle, "NicolasDorier", ServerTester.RepoUrl })
+        foreach (var search in new[] { "", "Listed", "Shared", listedTitle, "NicolasDorier", ServerTester.RepoUrl })
             AssertPlugin(await Search(search), listedSlug, search, present: true);
 
         AssertPlugin(await Search(lookalikeSlug), lookalikeSlug, lookalikeSlug, present: true);
