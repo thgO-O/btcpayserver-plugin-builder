@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using PluginBuilder.HostedServices;
 
 namespace PluginBuilder.Tests;
 
@@ -127,7 +126,7 @@ public sealed class ScriptMigrationTester : IAsyncDisposable
                 ?? throw new InvalidOperationException($"Embedded script {script.ResourceName} not found");
             using StreamReader reader = new(stream, Encoding.UTF8);
             var content = await reader.ReadToEndAsync();
-            await DatabaseStartupHostedService.ExecuteScript(conn, script.ScriptName, content);
+            await conn.ExecuteAsync($"{content}; INSERT INTO migrations VALUES (@scriptName)", new { scriptName = script.ScriptName });
         }
     }
 

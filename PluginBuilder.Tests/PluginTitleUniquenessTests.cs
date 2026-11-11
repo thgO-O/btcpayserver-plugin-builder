@@ -19,6 +19,10 @@ public class PluginTitleUniquenessTests(ITestOutputHelper logs) : UnitTestBase(l
                 INSERT INTO plugins (slug, settings) VALUES
                 ('cafe', jsonb_build_object('pluginTitle', @Title::text, 'description', 'Keep this')),
                 ('untitled', '{}'), ('null-title', '{"pluginTitle":null}');
+                INSERT INTO builds(plugin_slug, id, state, manifest_info)
+                VALUES ('untitled', 0, 'uploaded', '{"Name":"Legacy manifest title","Version":"1.0.0"}');
+                INSERT INTO versions(plugin_slug, ver, build_id, btcpay_min_ver, pre_release)
+                VALUES ('untitled', ARRAY[1,0,0], 0, ARRAY[0,0,0], true);
                 """, new { Title = "\t \u00a0Café  Payments\u3000\r\n" });
         }
 
@@ -32,6 +36,11 @@ public class PluginTitleUniquenessTests(ITestOutputHelper logs) : UnitTestBase(l
         Assert.False(await migrated.IsPluginTitleInUse("Cafe  Payments"));
         Assert.False(await migrated.IsPluginTitleInUse("Café Payments"));
         Assert.False(await migrated.IsPluginTitleInUse("Café  Payments", PluginSlug.Parse("cafe")));
+        Assert.False(await migrated.IsPluginTitleInUse("Legacy manifest title"));
+        Assert.Null((await migrated.GetSettings("untitled"))?.PluginTitle);
+        Assert.True(await migrated.SetPluginSettings("untitled", null));
+        Assert.Equal("Legacy manifest title", await migrated.QuerySingleAsync<string>(
+            "SELECT manifest_info->>'Name' FROM builds WHERE plugin_slug='untitled'"));
 
         Assert.True(await migrated.SetPluginSettings("cafe", new PluginSettings { PluginTitle = "  CAFé  Payments " }));
         Assert.Equal("CAFé  Payments", (await migrated.GetSettings("cafe"))!.PluginTitle);
@@ -39,6 +48,11 @@ public class PluginTitleUniquenessTests(ITestOutputHelper logs) : UnitTestBase(l
             migrated.SetPluginSettings("untitled", new PluginSettings { PluginTitle = "\nCafé  Payments " }));
         Assert.Equal(PluginTitleValidationException.DuplicateMessage, duplicate.Message);
         Assert.Equal(PluginTitleValidationException.UniqueConstraint, Assert.IsType<PostgresException>(duplicate.InnerException).ConstraintName);
+        Assert.Null((await migrated.GetSettings("untitled"))?.PluginTitle);
+        var tooLong = await Assert.ThrowsAsync<PluginTitleValidationException>(() =>
+            migrated.SetPluginSettings("untitled", new PluginSettings { PluginTitle = new string('x', 501) }));
+        Assert.Equal(PluginTitleValidationException.LengthMessage, tooLong.Message);
+        Assert.Equal(PluginTitleValidationException.LengthConstraint, Assert.IsType<PostgresException>(tooLong.InnerException).ConstraintName);
         Assert.Null((await migrated.GetSettings("untitled"))?.PluginTitle);
 
         var directWrite = await Assert.ThrowsAsync<PostgresException>(() => migrated.ExecuteAsync("""

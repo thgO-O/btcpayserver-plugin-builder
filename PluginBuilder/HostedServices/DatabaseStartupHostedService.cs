@@ -112,14 +112,7 @@ public class DatabaseStartupHostedService : IHostedService
             }
 
             Logger.LogInformation($"Execute script {scriptName}...");
-            await ExecuteScript(conn, scriptName, content);
+            await conn.ExecuteAsync($"{content}; INSERT INTO migrations VALUES (@scriptName)", new { scriptName });
         }
-    }
-
-    public static async Task ExecuteScript(NpgsqlConnection conn, string scriptName, string content)
-    {
-        await using var transaction = await conn.BeginTransactionAsync();
-        await conn.ExecuteAsync($"{content}; INSERT INTO migrations VALUES (@scriptName)", new { scriptName }, transaction);
-        await transaction.CommitAsync();
     }
 }

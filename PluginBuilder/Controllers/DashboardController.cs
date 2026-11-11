@@ -92,13 +92,6 @@ public class DashboardController(
             return View(model);
         }
 
-        await using var transaction = await conn.BeginTransactionAsync();
-        if (!await conn.NewPlugin(pluginSlug, userId))
-        {
-            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
-            return View(model);
-        }
-
         string? logoUrl = null;
         var logoUploadFailed = false;
         if (model.Logo != null)
@@ -109,6 +102,19 @@ public class DashboardController(
                 logoUrl = await azureStorageClient.UploadImageFile(model.Logo, uniqueBlobName);
             }
             catch (Exception) { logoUploadFailed = true; }
+        }
+
+        await using var transaction = await conn.BeginTransactionAsync();
+        if (!await conn.NewPlugin(pluginSlug, userId))
+        {
+            await transaction.RollbackAsync();
+            if (logoUrl is not null)
+            {
+                await azureStorageClient.TryDeleteUploadedImages([logoUrl]);
+                TempData[TempDataConstant.WarningMessage] = "New uploads were not saved. Please select them again.";
+            }
+            ModelState.AddModelError(nameof(model.PluginSlug), "This slug already exists");
+            return View(model);
         }
 
         var baseSettings = new PluginSettings

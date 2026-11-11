@@ -33,7 +33,6 @@ public class PluginCleanupTests : UnitTestBase
         await conn.NewPlugin(zombieSlug, userId);
         await conn.NewPlugin(freshSlug, userId);
         await conn.NewPlugin(veteranSlug, userId);
-        await conn.SetPluginSettings(veteranSlug, new PluginSettings { PluginTitle = veteranSlug });
 
         // Add a build to veteran-slug so it has a version
         var buildId = await conn.NewBuild(veteranSlug, new PluginBuildParameters(ServerTester.RepoUrl)

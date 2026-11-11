@@ -126,7 +126,7 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         Assert.Contains("href=\"https://github.com/example/changed\"", adminPage);
         Assert.Contains("Current settings:", adminPage);
 
-        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = (await conn.GetSettings(slug))?.PluginTitle ?? slug.ToString(), GitRepository = currentRepository });
+        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = currentRepository });
         var equivalentRepositoryPage = await adminBrowser.GetStringAsync($"/admin/listing-requests/{request.Id}");
         Assert.Contains($"href=\"{pinnedSourceUrl}\"", equivalentRepositoryPage);
         Assert.DoesNotContain($"href=\"{currentRepository}\"", equivalentRepositoryPage);
@@ -169,7 +169,7 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         Assert.Contains("Not configured", page);
         Assert.Contains("Current settings:", page);
 
-        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = (await conn.GetSettings(slug))?.PluginTitle ?? slug.ToString(), GitRepository = currentRepository });
+        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = currentRepository });
         var equivalentRepositoryPage = await browser.GetStringAsync(path);
         Assert.Contains($"href=\"{sourceUrl}\"", equivalentRepositoryPage);
         Assert.DoesNotContain("Repository (current settings)", equivalentRepositoryPage);
@@ -177,7 +177,7 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         Assert.DoesNotContain("Current settings:", equivalentRepositoryPage);
 
         const string changedRepository = "https://www.gitlab.com/example/group/changed";
-        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = (await conn.GetSettings(slug))?.PluginTitle ?? slug.ToString(), GitRepository = changedRepository });
+        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = changedRepository });
         var changedRepositoryPage = await browser.GetStringAsync(path);
         Assert.Contains($"href=\"{sourceUrl}\"", changedRepositoryPage);
         Assert.Contains($"href=\"{changedRepository}\"", changedRepositoryPage);
@@ -299,7 +299,7 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         await migration.RunScriptsUntil("34.ListingReviewTarget");
         await using var conn = await migration.Open();
         await conn.ExecuteAsync("""
-            INSERT INTO plugins(slug, settings) VALUES ('listing-legacy', '{"pluginTitle":"Legacy plugin"}');
+            INSERT INTO plugins(slug) VALUES ('listing-legacy');
             INSERT INTO builds(plugin_slug, id, state, build_info)
             VALUES ('listing-legacy', 0, 'uploaded', @source::jsonb);
             INSERT INTO versions(plugin_slug, ver, build_id, btcpay_min_ver, pre_release)
@@ -338,7 +338,7 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
         var admin = await CreateAdmin(server, conn);
         var slug = new PluginSlug("listing-legacy-review");
         await conn.NewPlugin(slug, admin);
-        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug.ToString(), GitRepository = "https://github.com/example/current" });
+        await conn.SetPluginSettings(slug, new PluginSettings { GitRepository = "https://github.com/example/current" });
         var requestId = await conn.CreateListingRequest(slug, "Release", "Proof", "Reviews", null, admin);
         await AddVersionBuild(conn, slug, 'a');
         using var api = server.CreateHttpClient();
@@ -385,12 +385,6 @@ public class ListingReviewTargetTests(ITestOutputHelper output) : UnitTestBase(o
     private static async Task<FullBuildId> AddVersionBuild(NpgsqlConnection conn, PluginSlug slug, char commit,
         string? directory = null, string? version = null, bool preRelease = false)
     {
-        var settings = await conn.GetSettings(slug) ?? new PluginSettings();
-        if (string.IsNullOrWhiteSpace(settings.PluginTitle))
-        {
-            settings.PluginTitle = slug.ToString();
-            await conn.SetPluginSettings(slug, settings);
-        }
         var (id, manifest) = await AddUploadedBuild(conn, slug, commit, directory, version);
         Assert.True(await conn.EnsureIdentifierOwnership(slug, manifest.Identifier));
         Assert.True(await conn.SetVersionBuild(id, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, preRelease));

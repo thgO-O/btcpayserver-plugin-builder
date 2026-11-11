@@ -33,8 +33,6 @@ public static class NpgsqlConnectionExtensions
         if (pluginSettings != null)
         {
             pluginSettings.PluginTitle = pluginSettings.PluginTitle?.Trim();
-            if (PluginSettings.IsTitleTooLong(pluginSettings.PluginTitle))
-                throw new PluginTitleValidationException(PluginTitleValidationException.LengthMessage);
             settingsJson = JsonConvert.SerializeObject(pluginSettings, CamelCaseSerializerSettings.Instance);
         }
 
@@ -52,11 +50,6 @@ public static class NpgsqlConnectionExtensions
                                            ex.ConstraintName == PluginTitleValidationException.UniqueConstraint)
         {
             throw new PluginTitleValidationException(PluginTitleValidationException.DuplicateMessage, ex);
-        }
-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.CheckViolation &&
-                                           ex.ConstraintName == PluginTitleValidationException.RequiredConstraint)
-        {
-            throw new PluginTitleValidationException(PluginTitleValidationException.RequiredMessage, ex);
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.CheckViolation &&
                                            ex.ConstraintName == PluginTitleValidationException.LengthConstraint)
@@ -401,35 +394,27 @@ public static class NpgsqlConnectionExtensions
     {
         minBTCPayVersion ??= PluginVersion.Zero;
 
-        try
-        {
-            return await connection.ExecuteAsync(
-                "INSERT INTO versions AS v (plugin_slug, ver, build_id, btcpay_min_ver, btcpay_max_ver, pre_release) " +
-                "VALUES (@plugin_slug, @ver, @build_id, @btcpay_min_ver, @btcpay_max_ver, @pre_release) " +
-                "ON CONFLICT (plugin_slug, ver) DO UPDATE SET build_id = @build_id, " +
-                "btcpay_min_ver = CASE WHEN v.btcpay_min_ver_override_enabled THEN v.btcpay_min_ver ELSE @btcpay_min_ver END, " +
-                "btcpay_max_ver = CASE WHEN v.btcpay_max_ver_override_enabled THEN v.btcpay_max_ver ELSE @btcpay_max_ver END, " +
-                "pre_release = @pre_release " +
-                "WHERE v.pre_release IS TRUE AND (" +
-                "v.build_id != @build_id " +
-                "OR (NOT v.btcpay_min_ver_override_enabled AND v.btcpay_min_ver != @btcpay_min_ver) " +
-                "OR (NOT v.btcpay_max_ver_override_enabled AND v.btcpay_max_ver IS DISTINCT FROM @btcpay_max_ver) " +
-                "OR @pre_release IS FALSE);",
-                new
-                {
-                    plugin_slug = fullBuildId.PluginSlug.ToString(),
-                    ver = version.VersionParts,
-                    build_id = fullBuildId.BuildId,
-                    btcpay_min_ver = minBTCPayVersion.VersionParts,
-                    btcpay_max_ver = maxBTCPayVersion?.VersionParts,
-                    pre_release = preRelease
-                }, tx) == 1;
-        }
-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.CheckViolation &&
-                                           ex.ConstraintName == PluginTitleValidationException.RequiredConstraint)
-        {
-            throw new BuildServiceException(PluginTitleValidationException.RequiredMessage);
-        }
+        return await connection.ExecuteAsync(
+            "INSERT INTO versions AS v (plugin_slug, ver, build_id, btcpay_min_ver, btcpay_max_ver, pre_release) " +
+            "VALUES (@plugin_slug, @ver, @build_id, @btcpay_min_ver, @btcpay_max_ver, @pre_release) " +
+            "ON CONFLICT (plugin_slug, ver) DO UPDATE SET build_id = @build_id, " +
+            "btcpay_min_ver = CASE WHEN v.btcpay_min_ver_override_enabled THEN v.btcpay_min_ver ELSE @btcpay_min_ver END, " +
+            "btcpay_max_ver = CASE WHEN v.btcpay_max_ver_override_enabled THEN v.btcpay_max_ver ELSE @btcpay_max_ver END, " +
+            "pre_release = @pre_release " +
+            "WHERE v.pre_release IS TRUE AND (" +
+            "v.build_id != @build_id " +
+            "OR (NOT v.btcpay_min_ver_override_enabled AND v.btcpay_min_ver != @btcpay_min_ver) " +
+            "OR (NOT v.btcpay_max_ver_override_enabled AND v.btcpay_max_ver IS DISTINCT FROM @btcpay_max_ver) " +
+            "OR @pre_release IS FALSE);",
+            new
+            {
+                plugin_slug = fullBuildId.PluginSlug.ToString(),
+                ver = version.VersionParts,
+                build_id = fullBuildId.BuildId,
+                btcpay_min_ver = minBTCPayVersion.VersionParts,
+                btcpay_max_ver = maxBTCPayVersion?.VersionParts,
+                pre_release = preRelease
+            }, tx) == 1;
     }
 
     /// <returns>The new build id, or null when the user already has the maximum number of unfinished builds.</returns>

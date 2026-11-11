@@ -226,6 +226,25 @@ public class AdminController(
     {
         await using var conn = await connectionFactory.Open();
         model.ActiveTab = PluginEditTabs.Settings;
+        var plugin = await conn.GetPluginDetails(pluginSlug);
+        if (plugin is null)
+            return NotFound();
+        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin.Settings);
+        var existingImages = pluginSettings.Images ?? [];
+        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
+        pluginSettings.Images = imagesUrlSubmitted
+            ? (imagesUrl ?? [])
+                .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .Where(existingImagesSet.Contains)
+                .ToList()
+            : [..existingImages];
+        model.PluginSettings.Images = [..pluginSettings.Images];
+        model.PluginSettings.Logo = pluginSettings.Logo;
+
+        if (string.IsNullOrWhiteSpace(model.PluginSettings.PluginTitle))
+            ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
+                "Plugin title is required.");
         if (PluginSettings.IsTitleTooLong(model.PluginSettings?.PluginTitle))
             ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
                 PluginTitleValidationException.LengthMessage);
@@ -234,9 +253,6 @@ public class AdminController(
             await PopulatePluginEditViewModel(conn, pluginSlug, model);
             return View(model);
         }
-
-        var plugin = await conn.GetPluginDetails(pluginSlug);
-        var pluginSettings = SafeJson.Deserialize<PluginSettings>(plugin?.Settings);
 
         if (!string.IsNullOrEmpty(model.PluginSettings.VideoUrl))
         {
@@ -259,14 +275,6 @@ public class AdminController(
 
         var newTitle = model.PluginSettings.PluginTitle?.Trim();
         var currentTitle = pluginSettings.PluginTitle?.Trim();
-        if (string.IsNullOrWhiteSpace(newTitle) && await conn.QuerySingleAsync<bool>(
-                "SELECT EXISTS(SELECT 1 FROM versions WHERE plugin_slug=@pluginSlug)", new { pluginSlug }))
-        {
-            ModelState.AddModelError($"{nameof(PluginEditViewModel.PluginSettings)}.{nameof(PluginSettings.PluginTitle)}",
-                PluginTitleValidationException.RequiredMessage);
-            await PopulatePluginEditViewModel(conn, pluginSlug, model);
-            return View(model);
-        }
         if (!string.IsNullOrWhiteSpace(newTitle) && !string.Equals(newTitle, currentTitle, StringComparison.OrdinalIgnoreCase))
         {
             PluginSlug? currentSlug = null;
@@ -290,17 +298,6 @@ public class AdminController(
         pluginSettings.Documentation = model.PluginSettings.Documentation;
         pluginSettings.PluginDirectory = model.PluginSettings.PluginDirectory;
         pluginSettings.VideoUrl = model.PluginSettings.VideoUrl;
-
-        var existingImages = pluginSettings.Images ?? [];
-        var existingImagesSet = new HashSet<string>(existingImages, StringComparer.Ordinal);
-        pluginSettings.Images = imagesUrlSubmitted
-            ? (imagesUrl ?? [])
-                .Where(s => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, removeImageUrl, StringComparison.Ordinal))
-                .Distinct(StringComparer.Ordinal)
-                .Where(existingImagesSet.Contains)
-                .ToList()
-            : [..existingImages];
-        model.PluginSettings.Images = [..pluginSettings.Images];
 
         if (pluginSettings.Images.Count > 10)
         {

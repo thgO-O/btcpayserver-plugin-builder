@@ -34,7 +34,7 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
         foreach (var (slug, visibility, pluginTitle) in new[]
                  {
                      (unlistedSlug, PluginVisibilityEnum.Unlisted, title),
-                     (lookalikeSlug, PluginVisibilityEnum.Unlisted, "Rockstar Stylist"),
+                     (lookalikeSlug, PluginVisibilityEnum.Unlisted, (string?)null),
                      (listedSlug, PluginVisibilityEnum.Listed, listedTitle),
                      (hiddenSlug, PluginVisibilityEnum.Hidden, "Hidden " + title)
                  })
@@ -47,7 +47,7 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
             await conn.SetVersionBuild(build, manifest.Version, manifest.BTCPayMinVersion, manifest.BTCPayMaxVersion, false);
             await conn.SetPluginSettings(slug, new PluginSettings
             {
-                PluginTitle = $"  {pluginTitle}  "
+                PluginTitle = pluginTitle is null ? null : $"  {pluginTitle}  "
             }, visibility);
         }
 
@@ -76,7 +76,8 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
                      unlistedSlug.ToUpperInvariant(), identifier.ToLowerInvariant(),
                      "rockstar", "Shared", title[..^1], title + "%", title.Replace(' ', '_'), title.Replace(" ", "  "),
                      "NicolasDorier", ServerTester.RepoUrl,
-                     hiddenSlug, hiddenIdentifier
+                     hiddenSlug, hiddenIdentifier,
+                     "Hidden " + title, ("Hidden " + title).ToUpperInvariant(), $"  hidden {title.ToLowerInvariant()}  "
                  })
         {
             var html = await Search(search);
@@ -85,7 +86,7 @@ public class PublicDirectorySearchTests(ITestOutputHelper logs) : UnitTestBase(l
             AssertPlugin(html, hiddenSlug, search, present: false);
         }
 
-        // Configured titles take precedence; other plugins' manifest names are not reserved.
+        // Unlisted plugins fall back to the manifest name only when no custom title is set.
         foreach (var search in new[] { "Rockstar Stylist", "ROCKSTAR STYLIST", "  rockstar stylist  " })
         {
             var html = await Search(search);

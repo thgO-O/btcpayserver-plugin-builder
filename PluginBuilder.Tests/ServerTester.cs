@@ -222,7 +222,6 @@ public class ServerTester : IAsyncDisposable
         var buildService = GetService<BuildService>();
 
         await conn.NewPlugin(slug, userId);
-        await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = slug });
         var buildId = await conn.NewBuild(slug, new PluginBuildParameters(RepoUrl)
         {
             GitRef = gitRef,
@@ -238,7 +237,7 @@ public class ServerTester : IAsyncDisposable
     /// Prepares a published pre-release for tests of existing plugins. No artifact is built or uploaded;
     /// use CreateAndBuildPluginAsync when exercising the build pipeline or artifact downloads.
     /// </summary>
-    public async Task<FullBuildId> CreatePublishedPluginAsync(string userId, string? slug = null, string? title = null)
+    public async Task<FullBuildId> CreatePublishedPluginAsync(string userId, string? slug = null)
     {
         slug ??= CreatePluginSlug();
         var manifest = PluginManifest.Parse($$"""
@@ -253,7 +252,6 @@ public class ServerTester : IAsyncDisposable
 
         await using var conn = await GetService<DBConnectionFactory>().Open();
         Assert.True(await conn.NewPlugin(slug, userId));
-        Assert.True(await conn.SetPluginSettings(slug, new PluginSettings { PluginTitle = title ?? slug }));
         var buildId = await conn.NewBuild(slug, new PluginBuildParameters(RepoUrl)
         {
             GitRef = GitRef,

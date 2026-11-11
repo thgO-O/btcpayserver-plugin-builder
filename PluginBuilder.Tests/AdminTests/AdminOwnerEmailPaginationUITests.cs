@@ -218,8 +218,6 @@ public class AdminOwnerEmailPaginationUITests(ITestOutputHelper output) : PageTe
         string title = "", string visibility = "listed", bool? preRelease = false)
     {
         Assert.True(await conn.NewPlugin(new PluginSlug(slug), owner));
-        if (string.IsNullOrWhiteSpace(title))
-            title = slug;
         await conn.ExecuteAsync("""
             UPDATE plugins SET visibility = @visibility::plugin_visibility_enum,
                 settings = jsonb_build_object('pluginTitle', @title::text) WHERE slug = @slug;
