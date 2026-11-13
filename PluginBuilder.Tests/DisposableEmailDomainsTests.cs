@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +24,10 @@ public class DisposableEmailDomainsTests
     [InlineData("someone@mailinator.com.")]
     [InlineData("someone@yopmail.fr")]
     [InlineData("someone@sharklasers.com")]
+    [InlineData("someone@10minute.email")]
+    [InlineData("someone@TEMPMAIL.EMAIL")]
+    [InlineData("someone@inbox.tempmail.email")]
+    [InlineData("someone@trashmail.org")]
     // Catch-all services that hand out made-up subdomains, as in a scripted sign-up burst.
     [InlineData("someone@2uh.kashre.com")]
     [InlineData("someone@c2.lucktaro.com")]
@@ -49,6 +55,8 @@ public class DisposableEmailDomainsTests
     [InlineData("someone@proton.me")]
     [InlineData("someone@mymailinator.com")]
     [InlineData("someone@mailinator.com.example.org")]
+    [InlineData("someone@nottempmail.email")]
+    [InlineData("someone@tempmail.email.example.org")]
     [InlineData("someone@b\u00FCcher.example")]
     [InlineData("someone@mailinator..com")]
     [InlineData("mailinator.com@example.org")]
@@ -69,9 +77,20 @@ public class DisposableEmailDomainsTests
     }
 
     [Fact]
-    public void RegistrationRefusesADisposableAddress()
+    public void TheListMatchesThePinnedCommunitySnapshot()
     {
-        var model = new RegisterViewModel { Email = "someone@mailinator.com", Password = "123456", ConfirmPassword = "123456" };
+        var canonical = Encoding.UTF8.GetBytes(string.Join('\n', DisposableEmailDomains.Domains) + "\n");
+        Assert.Equal("8a303e28fe2704fc20e73bd320cb9f47e8b3658adc0ebb046260d5acf59c27c2",
+            Convert.ToHexStringLower(SHA256.HashData(canonical)));
+    }
+
+    [Theory]
+    [InlineData("mailinator.com")]
+    [InlineData("tempmail.email")]
+    [InlineData("trashmail.org")]
+    public void RegistrationRefusesADisposableAddress(string domain)
+    {
+        var model = new RegisterViewModel { Email = "someone@" + domain, Password = "123456", ConfirmPassword = "123456" };
         var errors = new List<ValidationResult>();
 
         Assert.False(Validator.TryValidateObject(model, new ValidationContext(model), errors, validateAllProperties: true));
@@ -149,6 +168,8 @@ public class DisposableEmailRegistrationTests(ITestOutputHelper logs) : UnitTest
         {
             $"disposable-{Guid.NewGuid():N}@Mailinator.com",
             $"disposable-{Guid.NewGuid():N}@mailinator\u3002com",
+            $"disposable-{Guid.NewGuid():N}@tempmail.email",
+            $"disposable-{Guid.NewGuid():N}@trashmail.org",
             new string('a', 245) + "@example.org", // 257 characters: just above the database's limit.
             "someone@" + string.Concat(Enumerable.Repeat("a.", 8192)) + "example.org"
         };
